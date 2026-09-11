@@ -115,7 +115,6 @@ pnpm db:types
 
 ## Документация для разработчиков
 
-- [docs/DIPLOMA.md](docs/DIPLOMA.md) — концепция диплома, требования, диаграммы, тест-план и сценарий защиты;
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — архитектура, потоки данных и правила разработки;
 - [docs/DEBUGGING.md](docs/DEBUGGING.md) — алгоритм поиска багов и частые неисправности;
 - [docs/architecture.md](docs/architecture.md) — схема домена и таблиц Supabase.
