@@ -1,9 +1,13 @@
+import { appFixturesInitial } from "@/demo/initialState";
+import { DEFAULT_ACCOUNTS } from "@/demo/accounts";
+import type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, VisitorPass, ResidentVehicle, NotificationPreferenceKey, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
+export type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, VisitorPass, ResidentVehicle, NotificationPreferenceKey, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PostWithAuthor, UserRole } from "@/types";
 import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
-import { getAuthCallbackUrl, isSupabaseConfigured } from "@/lib/supabase/config";
+import { getAuthCallbackUrl, isSupabaseConfigured, isDemoMode } from "@/lib/supabase/config";
 import type { User } from "@supabase/supabase-js";
 import {
   deleteClassified as deleteClassifiedRemote,
@@ -45,342 +49,6 @@ import {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value: string | null | undefined) => Boolean(value && UUID_RE.test(value));
 
-export interface UserAccount {
-  id: string;
-  fullName: string;
-  phone: string;
-  email?: string;
-  role: UserRole;
-  roleLabel: string;
-  buildingNumber: string;
-  complexId?: string;
-  complexName?: string;
-  complexAddress?: string;
-  buildingId?: string;
-  entranceId?: string;
-  entranceNumber: number;
-  apartmentNumber: string;
-  verified: boolean;
-  avatarUrl: string;
-  bio?: string;
-}
-
-export interface MessageItem {
-  id: string;
-  chatId: string;
-  senderId: string;
-  senderName: string;
-  senderAvatar?: string;
-  isOfficial?: boolean;
-  isMe: boolean;
-  text: string;
-  time: string;
-}
-
-export interface ChatItem {
-  id: string;
-  name: string;
-  type: "complex" | "building" | "entrance" | "thematic" | "direct";
-  lastMessage: string;
-  lastMessageTime: string;
-  unreadCount: number;
-  avatarColor: string;
-  icon: string;
-  isOfficial?: boolean;
-}
-
-export interface VerificationRequest {
-  id: string;
-  userId: string;
-  fullName: string;
-  phone: string;
-  buildingNumber: string;
-  entranceNumber: number;
-  apartmentNumber: string;
-  documentType: string;
-  documentUrl: string;
-  status: "pending" | "approved" | "rejected";
-  submittedAt: string;
-}
-
-export interface AppNotification {
-  id: string;
-  type: string;
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-  isRead: boolean;
-  createdAt: string;
-}
-
-export interface ClassifiedItem {
-  id: string;
-  title: string;
-  category: "Объявления" | "Услуги" | "Подработки" | "Помощь";
-  price: string;
-  location: string;
-  image: string;
-  description: string;
-  authorId: string;
-  authorName: string;
-  authorPhone: string;
-  createdAt: string;
-}
-
-export type ServiceRequestStatus = "submitted" | "in_progress" | "resolved" | "closed";
-export type ServiceRequestPriority = "normal" | "important" | "emergency";
-export type ServiceRequestCategory = "utilities" | "cleaning" | "repair" | "safety" | "territory" | "other";
-
-export interface ServiceRequestItem {
-  id: string;
-  userId: string;
-  complexId: string;
-  category: ServiceRequestCategory;
-  title: string;
-  description: string;
-  location: string;
-  status: ServiceRequestStatus;
-  priority: ServiceRequestPriority;
-  publicForComplex: boolean;
-  assigneeName?: string;
-  slaDueAt?: string;
-  resolutionNote?: string;
-  rating?: number;
-  attachments: ServiceRequestAttachment[];
-  events: ServiceRequestEvent[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ServiceRequestAttachment {
-  id: string;
-  url: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-  kind: "evidence" | "resolution";
-}
-
-export interface ServiceRequestEvent {
-  id: string;
-  kind: "created" | "comment" | "assigned" | "status_changed" | "resolution" | "rated" | "reopened";
-  actorName: string;
-  actorRole?: UserRole;
-  message?: string;
-  createdAt: string;
-}
-
-export type HouseDocumentCategory = "finance" | "protocol" | "rules" | "contract" | "notice" | "report" | "other";
-
-export interface HouseDocument {
-  id: string;
-  complexId: string;
-  title: string;
-  description: string;
-  category: HouseDocumentCategory;
-  version: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  url?: string;
-  isImportant: boolean;
-  requiresAcknowledgement: boolean;
-  acknowledged: boolean;
-  status: "active" | "archived";
-  publishedBy: string;
-  publishedAt: string;
-  searchableText?: string;
-  scopeLabel?: string;
-}
-
-export type OfficialVoteChoice = "yes" | "no" | "abstain";
-
-export interface OfficialVoteItem {
-  id: string;
-  complexId: string;
-  title: string;
-  description: string;
-  basis: "owner" | "area";
-  quorumPercent: number;
-  participationPercent: number;
-  eligibleUnits: number;
-  eligibleWeight: number;
-  status: "draft" | "active" | "completed" | "cancelled";
-  startsAt: string;
-  endsAt: string;
-  results: Record<OfficialVoteChoice, number>;
-  userChoice?: OfficialVoteChoice;
-  protocolUrl?: string;
-}
-
-export interface FinanceTransaction {
-  id: string;
-  direction: "income" | "expense";
-  category: string;
-  title: string;
-  amount: number;
-  occurredOn: string;
-  documentId?: string;
-}
-
-export interface FinanceBudgetItem {
-  id: string;
-  category: string;
-  planned: number;
-  actual: number;
-}
-
-export interface FinanceOverview {
-  balance: number;
-  income: number;
-  expense: number;
-  currency: "KZT";
-  transactions: FinanceTransaction[];
-  budget: FinanceBudgetItem[];
-}
-
-export interface HomeScheduleItem {
-  id: string;
-  kind: "cleaning" | "maintenance" | "outage" | "event";
-  title: string;
-  description: string;
-  location: string;
-  startsAt: string;
-  endsAt?: string;
-  status: "planned" | "in_progress" | "completed" | "cancelled";
-}
-
-export interface AmenityResource {
-  id: string;
-  name: string;
-  description: string;
-  location: string;
-  capacity?: number;
-  price: number;
-  kind?: "room" | "sport" | "bbq" | "freight_lift" | "parking";
-  rules?: string;
-  requiresApproval?: boolean;
-}
-
-export interface AmenityBooking {
-  id: string;
-  resourceId: string;
-  startsAt: string;
-  endsAt: string;
-  status: "confirmed" | "cancelled" | "completed";
-  approvalStatus?: "pending" | "approved" | "rejected";
-  paymentStatus?: "not_required" | "pending" | "paid";
-}
-
-export interface VisitorPass {
-  id: string;
-  guestName: string;
-  kind: "guest" | "courier" | "vehicle";
-  vehiclePlate?: string;
-  accessCode: string;
-  validFrom: string;
-  validUntil: string;
-  status: "active" | "used" | "revoked" | "expired";
-}
-
-export interface ResidentVehicle {
-  id: string;
-  plate: string;
-  label: string;
-}
-
-export type NotificationPreferenceKey = "requests" | "community" | "finance" | "emergency";
-
-export interface EmergencyAlert {
-  id: string;
-  title: string;
-  message: string;
-  affectedAreas: string[];
-  expectedResolution?: string;
-  contactPhone?: string;
-  active: boolean;
-  acknowledged: boolean;
-  createdAt: string;
-}
-
-export const DEFAULT_ACCOUNTS: UserAccount[] = [
-  {
-    id: "user-1",
-    fullName: "Мария Иванова",
-    phone: "+7 (777) 234-56-78",
-    email: "maria@housesm.kz",
-    role: "resident",
-    roleLabel: "Собственник (Дом 2)",
-    buildingNumber: "2",
-    entranceNumber: 1,
-    apartmentNumber: "45",
-    verified: true,
-    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
-    bio: "Живу в ЖК с 2023 года. Люблю порядок и зеленый двор!",
-  },
-  {
-    id: "user-2",
-    fullName: "Алексей Петров",
-    phone: "+7 (701) 444-55-66",
-    email: "alex@housesm.kz",
-    role: "resident",
-    roleLabel: "Собственник (Дом 1)",
-    buildingNumber: "1",
-    entranceNumber: 2,
-    apartmentNumber: "12",
-    verified: true,
-    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80",
-    bio: "Инициатор установки камер в подъезде 2.",
-  },
-  {
-    id: "user-hoa",
-    fullName: "ОСИ «Солнечный»",
-    phone: "+7 (727) 123-45-67",
-    email: "osi@housesm.kz",
-    role: "hoa_official",
-    roleLabel: "Председатель ОСИ",
-    buildingNumber: "1",
-    entranceNumber: 1,
-    apartmentNumber: "Офис ОСИ",
-    verified: true,
-    avatarUrl: "https://images.unsplash.com/photo-1577495508048-b635879837f1?w=200&auto=format&fit=crop&q=80",
-    bio: "Официальный орган управления жилым комплексом.",
-  },
-  {
-    id: "user-master",
-    fullName: "Олег Смирнов",
-    phone: "+7 (775) 123-99-88",
-    email: "oleg.electrician@housesm.kz",
-    role: "service_provider",
-    roleLabel: "Мастер-электрик ЖК",
-    buildingNumber: "1",
-    entranceNumber: 1,
-    apartmentNumber: "3",
-    verified: true,
-    avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80",
-    bio: "Электрика любой сложности в нашем ЖК. Опыт 10 лет.",
-  },
-  {
-    id: "user-admin",
-    fullName: "Администратор Сообщества",
-    phone: "+7 (777) 000-11-22",
-    email: "admin@housesm.kz",
-    role: "admin",
-    roleLabel: "Администратор ЖК",
-    buildingNumber: "2",
-    entranceNumber: 2,
-    apartmentNumber: "100",
-    verified: true,
-    avatarUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80",
-    bio: "Модерация социальной сети и верификация жителей.",
-  },
-];
-
-export interface RegistrationResult {
-  account: UserAccount;
-  requiresEmailConfirmation: boolean;
-}
-
 function roleLabel(role: UserRole, buildingNumber: string) {
   if (role === "service_provider") return "Мастер услуг ЖК";
   if (role === "hoa_official") return "Представитель ОСИ";
@@ -414,6 +82,7 @@ function accountFromAuthMetadata(user: User): UserAccount {
 async function loadAccount(user: User): Promise<UserAccount> {
   const supabase = createClient();
   const fallback = accountFromAuthMetadata(user);
+  const membershipResult = await supabase.from("complex_memberships").select("role").eq("user_id", user.id).eq("is_active", true).maybeSingle();
   const profileResult = await supabase
     .from("profiles")
     .select("id, phone, full_name, avatar_url, role, apartment_id, complex_id, verified, bio")
@@ -491,6 +160,7 @@ async function loadAccount(user: User): Promise<UserAccount> {
     phone: profile.phone || fallback.phone,
     email: user.email,
     role: profile.role,
+    membershipRole: membershipResult.data?.role,
     roleLabel: roleLabel(profile.role, buildingNumber),
     buildingNumber,
     complexId: profile.complex_id || undefined,
@@ -515,164 +185,16 @@ function mergeAccount(users: UserAccount[], account: UserAccount) {
   ];
 }
 
-export interface AppState {
-  // Аутентификация
-  currentUser: UserAccount;
-  registeredUsers: UserAccount[];
-  isLoggedIn: boolean;
-  isAuthLoading: boolean;
-  supabaseUserId: string | null;
-
-  registerUser: (data: {
-    fullName: string;
-    phone: string;
-    email: string;
-    password: string;
-    buildingNumber: string;
-    entranceNumber: number;
-    apartmentNumber: string;
-    role?: UserRole;
-  }) => Promise<RegistrationResult>;
-
-  loginUser: (email: string, password: string) => Promise<UserAccount>;
-  resetPassword: (email: string) => Promise<void>;
-  logoutUser: () => Promise<void>;
-  syncAuthState: () => Promise<void>;
-  setVerified: (verified: boolean) => void;
-  updateUser: (data: Partial<UserAccount>) => void;
-  backendError: string | null;
-  clearBackendError: () => void;
-  hydrateDomainData: () => Promise<void>;
-  notifications: AppNotification[];
-  markNotificationRead: (notificationId: string) => Promise<void>;
-  markAllNotificationsRead: () => Promise<void>;
-  notificationPreferences: Record<NotificationPreferenceKey, boolean>;
-  setNotificationPreference: (key: NotificationPreferenceKey, enabled: boolean) => void;
-
-  // Заявки в управляющую организацию
-  serviceRequests: ServiceRequestItem[];
-  createServiceRequest: (
-    data: Pick<ServiceRequestItem, "category" | "title" | "description" | "location" | "priority" | "publicForComplex">,
-    files?: File[],
-  ) => Promise<void>;
-  addServiceRequestComment: (requestId: string, message: string) => Promise<void>;
-  rateServiceRequest: (requestId: string, rating: number) => Promise<void>;
-  reopenServiceRequest: (requestId: string, message: string) => Promise<void>;
-  updateServiceRequestStatus: (
-    requestId: string,
-    status: ServiceRequestStatus,
-    options?: { note?: string; assigneeName?: string; slaDueAt?: string },
-  ) => Promise<void>;
-
-  // Документы дома
-  documents: HouseDocument[];
-  addHouseDocument: (
-    data: Pick<HouseDocument, "title" | "description" | "category" | "version" | "isImportant" | "requiresAcknowledgement">,
-    file: File,
-  ) => Promise<void>;
-  acknowledgeDocument: (documentId: string) => Promise<void>;
-  archiveDocument: (documentId: string) => Promise<void>;
-
-  // Управление домом и прозрачные финансы
-  officialVotes: OfficialVoteItem[];
-  castOfficialVote: (voteId: string, choice: OfficialVoteChoice) => Promise<void>;
-  finance: FinanceOverview;
-  addFinanceTransaction: (data: Omit<FinanceTransaction, "id">) => Promise<void>;
-  scheduleItems: HomeScheduleItem[];
-  amenityResources: AmenityResource[];
-  amenityBookings: AmenityBooking[];
-  visitorPasses: VisitorPass[];
-  residentVehicles: ResidentVehicle[];
-  createAmenityBooking: (resourceId: string, startsAt: string, endsAt: string) => Promise<void>;
-  createVisitorPass: (data: Pick<VisitorPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">) => Promise<void>;
-  addResidentVehicle: (plate: string, label: string) => Promise<void>;
-
-  // Экстренные оповещения ОСИ
-  urgentAlert: EmergencyAlert | null;
-  setUrgentAlert: (alert: EmergencyAlert | null) => Promise<void>;
-  acknowledgeUrgentAlert: () => Promise<void>;
-
-  // Заявки на верификацию
-  verificationRequests: VerificationRequest[];
-  approveVerification: (requestId: string) => void;
-  rejectVerification: (requestId: string) => void;
-
-  // Посты и лента
-  posts: PostWithAuthor[];
-  addPost: (post: PostWithAuthor) => void;
-  deletePost: (postId: string) => void;
-  likePost: (postId: string) => void;
-  unlikePost: (postId: string) => void;
-  votePoll: (postId: string, optionId: string) => void;
-  supportInitiative: (initiativeId: string) => void;
-  addComment: (postId: string, commentText: string) => void;
-  deleteComment: (postId: string, commentId: string) => void;
-
-  // Комментарии
-  postComments: Record<string, Array<{ id: string; authorName: string; isOfficial: boolean; text: string; time: string }>>;
-
-  // Чаты
-  chats: ChatItem[];
-  messages: Record<string, MessageItem[]>;
-  sendMessage: (chatId: string, text: string) => void;
-  deleteMessage: (chatId: string, messageId: string) => void;
-  createDirectChatWith: (authorId: string, authorName: string) => Promise<string>;
-
-  // Объявления
-  classifieds: ClassifiedItem[];
-  addClassified: (item: ClassifiedItem) => void;
-  deleteClassified: (itemId: string) => void;
-
-  // Сборы
-  donateToFundraiser: (fundraiserId: string, amount: number) => Promise<void>;
-  createFundraiser: (data: {
-    title: string;
-    content: string;
-    targetAmount: number;
-    currency?: string;
-    endsAt?: string;
-  }) => void;
-  submitVerificationRequest: (data: Omit<VerificationRequest, "id" | "userId" | "status" | "submittedAt" | "documentUrl"> & { documentPath: string }) => Promise<void>;
-}
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      currentUser: DEFAULT_ACCOUNTS[0],
-      registeredUsers: DEFAULT_ACCOUNTS,
-      isLoggedIn: !isSupabaseConfigured(),
+      ...appFixturesInitial(),
+
+      isLoggedIn: isDemoMode(),
       isAuthLoading: isSupabaseConfigured(),
       supabaseUserId: null,
       backendError: null,
-      notifications: [
-        {
-          id: "notification-request-demo",
-          type: "service_request",
-          title: "Заявка принята в работу",
-          body: "Служба эксплуатации назначена на заявку «Не работает освещение на этаже».",
-          data: { service_request_id: "service-request-1" },
-          isRead: false,
-          createdAt: "Сегодня, 10:05",
-        },
-        {
-          id: "notification-vote-demo",
-          type: "vote",
-          title: "Голосование завершится завтра",
-          body: "Успейте принять участие в решении по благоустройству двора.",
-          data: { post_id: "post-3" },
-          isRead: false,
-          createdAt: "Сегодня, 09:00",
-        },
-        {
-          id: "notification-document-demo",
-          type: "document",
-          title: "Опубликован отчёт ОСИ",
-          body: "Финансовый отчёт за август доступен в центре документов.",
-          data: { document_id: "document-1" },
-          isRead: true,
-          createdAt: "Вчера, 18:20",
-        },
-      ],
+
       notificationPreferences: {
         requests: true,
         community: true,
@@ -682,175 +204,6 @@ export const useAppStore = create<AppState>()(
       setNotificationPreference: (key, enabled) => set((state) => ({
         notificationPreferences: { ...state.notificationPreferences, [key]: enabled },
       })),
-      serviceRequests: [
-        {
-          id: "service-request-1",
-          userId: "user-1",
-          complexId: "complex-1",
-          category: "repair",
-          title: "Не работает освещение на этаже",
-          description: "Лампа возле лифта не включается второй день.",
-          location: "Дом 2 · подъезд 1 · 7 этаж",
-          status: "in_progress",
-          priority: "normal",
-          publicForComplex: true,
-          assigneeName: "Служба эксплуатации",
-          slaDueAt: "Сегодня, 18:00",
-          attachments: [],
-          events: [
-            { id: "request-event-1", kind: "created", actorName: "Мария Иванова", message: "Лампа возле лифта не включается второй день.", createdAt: "Сегодня, 09:20" },
-            { id: "request-event-2", kind: "assigned", actorName: "ОСИ «Солнечный»", message: "Назначена служба эксплуатации", createdAt: "Сегодня, 10:05" },
-          ],
-          createdAt: "Сегодня, 09:20",
-          updatedAt: "Сегодня, 10:05",
-        },
-        {
-          id: "service-request-2",
-          userId: "user-1",
-          complexId: "complex-1",
-          category: "cleaning",
-          title: "Уборка входной группы",
-          description: "После доставки осталась упаковка у входа.",
-          location: "Дом 2 · подъезд 1",
-          status: "resolved",
-          priority: "normal",
-          publicForComplex: false,
-          assigneeName: "Клининг",
-          resolutionNote: "Входная группа очищена, упаковка вывезена.",
-          attachments: [],
-          events: [
-            { id: "request-event-3", kind: "created", actorName: "Мария Иванова", createdAt: "Вчера, 17:42" },
-            { id: "request-event-4", kind: "resolution", actorName: "Клининг", message: "Уборка выполнена", createdAt: "Сегодня, 08:10" },
-          ],
-          createdAt: "Вчера, 17:42",
-          updatedAt: "Сегодня, 08:10",
-        },
-      ],
-      documents: [
-        {
-          id: "document-1",
-          complexId: "complex-1",
-          title: "Финансовый отчёт за август",
-          description: "Поступления, обязательные расходы и остаток средств ОСИ за месяц.",
-          category: "finance",
-          version: "1.0",
-          fileName: "finance-august.pdf",
-          mimeType: "application/pdf",
-          sizeBytes: 824000,
-          isImportant: true,
-          requiresAcknowledgement: false,
-          acknowledged: false,
-          status: "active",
-          publishedBy: "ОСИ «Солнечный»",
-          publishedAt: "Вчера, 18:20",
-        },
-        {
-          id: "document-2",
-          complexId: "complex-1",
-          title: "Правила пожарной безопасности",
-          description: "Порядок действий при пожаре и требования к эвакуационным выходам.",
-          category: "rules",
-          version: "2.1",
-          fileName: "fire-safety.pdf",
-          mimeType: "application/pdf",
-          sizeBytes: 462000,
-          isImportant: true,
-          requiresAcknowledgement: true,
-          acknowledged: false,
-          status: "active",
-          publishedBy: "ОСИ «Солнечный»",
-          publishedAt: "2 сентября, 12:10",
-        },
-        {
-          id: "document-3",
-          complexId: "complex-1",
-          title: "Протокол собрания №8",
-          description: "Решения по освещению паркинга и графику обслуживания лифтов.",
-          category: "protocol",
-          version: "1.0",
-          fileName: "protocol-08.pdf",
-          mimeType: "application/pdf",
-          sizeBytes: 1130000,
-          isImportant: false,
-          requiresAcknowledgement: false,
-          acknowledged: false,
-          status: "active",
-          publishedBy: "ОСИ «Солнечный»",
-          publishedAt: "28 августа, 16:40",
-        },
-      ],
-      officialVotes: [
-        {
-          id: "official-vote-1",
-          complexId: "complex-1",
-          title: "Благоустройство детской площадки",
-          description: "Утвердить смету 4 800 000 ₸ на безопасное покрытие, освещение и новое игровое оборудование.",
-          basis: "area",
-          quorumPercent: 51,
-          participationPercent: 46,
-          eligibleUnits: 120,
-          eligibleWeight: 12000,
-          status: "active",
-          startsAt: "1 сентября, 09:00",
-          endsAt: "6 сентября, 21:00",
-          results: { yes: 4200, no: 840, abstain: 480 },
-        },
-        {
-          id: "official-vote-2",
-          complexId: "complex-1",
-          title: "График обслуживания лифтов",
-          description: "Утверждение годового договора на техническое обслуживание лифтового оборудования.",
-          basis: "owner",
-          quorumPercent: 51,
-          participationPercent: 68,
-          eligibleUnits: 120,
-          eligibleWeight: 120,
-          status: "completed",
-          startsAt: "12 августа, 09:00",
-          endsAt: "19 августа, 21:00",
-          results: { yes: 70, no: 8, abstain: 4 },
-          userChoice: "yes",
-        },
-      ],
-      finance: {
-        balance: 2142500,
-        income: 3680000,
-        expense: 1537500,
-        currency: "KZT",
-        budget: [
-          { id: "budget-1", category: "Содержание дома", planned: 9600000, actual: 6210000 },
-          { id: "budget-2", category: "Лифты", planned: 3200000, actual: 2440000 },
-          { id: "budget-3", category: "Благоустройство", planned: 4800000, actual: 1180000 },
-          { id: "budget-4", category: "Безопасность", planned: 2100000, actual: 1370000 },
-        ],
-        transactions: [
-          { id: "finance-1", direction: "income", category: "Взносы", title: "Ежемесячные взносы жителей", amount: 3680000, occurredOn: "2 сентября" },
-          { id: "finance-2", direction: "expense", category: "Лифты", title: "Техническое обслуживание", amount: 620000, occurredOn: "3 сентября", documentId: "document-1" },
-          { id: "finance-3", direction: "expense", category: "Уборка", title: "Клининг общих зон", amount: 487500, occurredOn: "2 сентября" },
-          { id: "finance-4", direction: "expense", category: "Безопасность", title: "Обслуживание камер", amount: 430000, occurredOn: "1 сентября" },
-        ],
-      },
-      scheduleItems: [
-        { id: "schedule-1", kind: "outage", title: "Отключение холодной воды", description: "Замена насосного оборудования", location: "Дом 1 и Дом 2", startsAt: "Завтра, 10:00", endsAt: "Завтра, 14:00", status: "planned" },
-        { id: "schedule-2", kind: "maintenance", title: "Обслуживание лифтов", description: "Проверка датчиков безопасности", location: "Дом 2 · подъезд 1", startsAt: "6 сентября, 09:00", endsAt: "6 сентября, 12:00", status: "planned" },
-        { id: "schedule-3", kind: "cleaning", title: "Уборка паркинга", description: "Механизированная уборка уровня −1", location: "Паркинг", startsAt: "8 сентября, 08:00", endsAt: "8 сентября, 11:00", status: "planned" },
-      ],
-      amenityResources: [
-        { id: "resource-1", name: "Переговорная ОСИ", description: "Комната для собраний и занятий", location: "Дом 1 · 1 этаж", capacity: 12, price: 0, kind: "room", rules: "До 2 часов в день", requiresApproval: false },
-        { id: "resource-2", name: "Мангальная зона", description: "Закрытая дворовая зона со столом", location: "Внутренний двор", capacity: 8, price: 3000, kind: "bbq", rules: "Убрать территорию после использования", requiresApproval: true },
-        { id: "resource-3", name: "Грузовой лифт", description: "Бронирование для переезда", location: "Выбранный подъезд", price: 0, kind: "freight_lift", rules: "Защитные панели устанавливает консьерж", requiresApproval: true },
-        { id: "resource-4", name: "Спортивная площадка", description: "Мини-футбол и тренировки", location: "Южный двор", capacity: 16, price: 0, kind: "sport", rules: "Не более 90 минут", requiresApproval: false },
-        { id: "resource-5", name: "Гостевое парковочное место", description: "Краткосрочная парковка для гостей", location: "Северный въезд", price: 500, kind: "parking", rules: "До 8 часов", requiresApproval: false },
-      ],
-      amenityBookings: [
-        { id: "booking-1", resourceId: "resource-1", startsAt: "7 сентября, 18:00", endsAt: "7 сентября, 19:30", status: "confirmed" },
-      ],
-      visitorPasses: [
-        { id: "pass-1", guestName: "Александр · курьер", kind: "courier", accessCode: "K7P4-28Q", validFrom: "Сегодня, 14:00", validUntil: "Сегодня, 16:00", status: "active" },
-      ],
-      residentVehicles: [
-        { id: "vehicle-1", plate: "777 ABC 02", label: "Белая Toyota" },
-      ],
 
       markNotificationRead: async (notificationId) => {
         if (isSupabaseConfigured()) {
@@ -912,13 +265,13 @@ export const useAppStore = create<AppState>()(
           if (error) throw error;
 
           if (!data.user) {
-            set({ isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+            set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
             return;
           }
 
           if (!data.user.email_confirmed_at) {
             await supabase.auth.signOut();
-            set({ isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+            set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
             return;
           }
 
@@ -931,7 +284,7 @@ export const useAppStore = create<AppState>()(
             isAuthLoading: false,
           }));
         } catch (error) {
-          set({ isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+          set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
           throw error;
         }
       },
@@ -1044,18 +397,6 @@ export const useAppStore = create<AppState>()(
             ),
           };
         }),
-
-      urgentAlert: {
-        id: "alert-1",
-        title: "Плановое отключение холодной воды",
-        message: "Завтра с 10:00 до 14:00 в Доме 1 и Доме 2 в связи с заменой насосного оборудования.",
-        affectedAreas: ["Дом 1", "Дом 2"],
-        expectedResolution: "Завтра, 14:00",
-        contactPhone: "+7 (727) 123-45-67",
-        active: true,
-        acknowledged: false,
-        createdAt: "Сегодня в 09:00",
-      },
 
       setUrgentAlert: async (alert) => {
         const remote = await persistEmergencyAlert(alert, get().urgentAlert?.id);
@@ -1299,22 +640,6 @@ export const useAppStore = create<AppState>()(
         }));
       },
 
-      verificationRequests: [
-        {
-          id: "req-1",
-          userId: "user-101",
-          fullName: "Бауыржан Сапаров",
-          phone: "+7 (701) 987-65-43",
-          buildingNumber: "1",
-          entranceNumber: 2,
-          apartmentNumber: "28",
-          documentType: "Договор купли-продажи / eGov",
-          documentUrl: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=600&auto=format&fit=crop&q=80",
-          status: "pending",
-          submittedAt: "25 минут назад",
-        },
-      ],
-
       approveVerification: (requestId) =>
         set((state) => {
           const previousRequests = state.verificationRequests;
@@ -1362,181 +687,6 @@ export const useAppStore = create<AppState>()(
             ),
           };
         }),
-
-      posts: [
-        {
-          id: "post-1",
-          author_id: "user-1",
-          complex_id: "complex-1",
-          building_id: "building-2",
-          entrance_id: null,
-          type: "post",
-          title: null,
-          content: "Соседи, добрый день!\nКто подскажет, когда будут проводиться работы по благоустройству во дворе?",
-          status: "active",
-          is_official: false,
-          territory: "complex",
-          price: null,
-          currency: null,
-          views_count: 142,
-          created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date().toISOString(),
-          author: {
-            id: "user-1",
-            full_name: "Мария Иванова",
-            avatar_url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
-            role: "resident",
-            verified: true,
-          },
-          attachments: [
-            {
-              id: "att-1",
-              post_id: "post-1",
-              url: "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&auto=format&fit=crop&q=80",
-              type: "image",
-              name: "dvor.jpg",
-              size: 1024000,
-              created_at: new Date().toISOString(),
-            },
-          ],
-          reactions_count: 12,
-          comments_count: 2,
-        },
-        {
-          id: "post-2",
-          author_id: "user-hoa",
-          complex_id: "complex-1",
-          building_id: null,
-          entrance_id: null,
-          type: "official_poll",
-          title: "Какой проект благоустройства двора вам больше нравится?",
-          content: "Голосование до 25 мая. Просим каждого жителя отдать свой голос за лучший проект детской и прогулочной зоны.",
-          status: "active",
-          is_official: true,
-          territory: "complex",
-          price: null,
-          currency: null,
-          views_count: 320,
-          created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date().toISOString(),
-          author: {
-            id: "user-hoa",
-            full_name: "ОСИ «Солнечный»",
-            avatar_url: null,
-            role: "hoa_official",
-            verified: true,
-          },
-          poll: {
-            id: "poll-1",
-            post_id: "post-2",
-            is_multiple: false,
-            ends_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-            total_votes: 68,
-            options: [
-              { id: "opt-1", poll_id: "poll-1", text: "Проект А: Новая эко-площадка и беседки", votes_count: 42, position: 0 },
-              { id: "opt-2", poll_id: "poll-1", text: "Проект Б: Спортивный воркаут и тренажеры", votes_count: 18, position: 1 },
-              { id: "opt-3", poll_id: "poll-1", text: "Проект В: Дополнительное озеленение и аллея", votes_count: 8, position: 2 },
-            ],
-          },
-          reactions_count: 24,
-          comments_count: 4,
-        },
-        {
-          id: "post-3",
-          author_id: "user-2",
-          complex_id: "complex-1",
-          building_id: "building-1",
-          entrance_id: "entrance-2",
-          type: "initiative",
-          title: "Установка камеры видеонаблюдения в подъезде 2",
-          content: "Предлагаю установить камеру видеонаблюдения в подъезде 2 для безопасности колясок, велосипедов и общего контроля доступа.",
-          status: "active",
-          is_official: false,
-          territory: "entrance",
-          price: null,
-          currency: null,
-          views_count: 89,
-          created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date().toISOString(),
-          author: {
-            id: "user-2",
-            full_name: "Алексей Петров",
-            avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80",
-            role: "resident",
-            verified: true,
-          },
-          initiative: {
-            id: "init-1",
-            post_id: "post-3",
-            stage: "hoa_review",
-            goal: "Безопасность и сохранность имущества жителей подъезда 2",
-            supporters: 24,
-            updated_at: new Date().toISOString(),
-          },
-          reactions_count: 19,
-          comments_count: 6,
-        },
-        {
-          id: "post-4",
-          author_id: "user-hoa",
-          complex_id: "complex-1",
-          building_id: null,
-          entrance_id: null,
-          type: "fundraiser",
-          title: "Сбор на благоустройство двора",
-          content: "Собираем средства на обустройство безопасного покрытия детской площадки и установку парковых фонарей.",
-          status: "active",
-          is_official: true,
-          territory: "complex",
-          price: null,
-          currency: null,
-          views_count: 512,
-          created_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-          updated_at: new Date().toISOString(),
-          author: {
-            id: "user-hoa",
-            full_name: "ОСИ «Солнечный»",
-            avatar_url: null,
-            role: "hoa_official",
-            verified: true,
-          },
-          fundraiser: {
-            id: "fund-1",
-            post_id: "post-4",
-            initiative_id: null,
-            target_amount: 2000000,
-            current_amount: 1250000,
-            currency: "₸",
-            payment_url: "https://pay.kaspi.kz",
-            qr_url: null,
-            ends_at: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
-            status: "active",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          reactions_count: 45,
-          comments_count: 3,
-        },
-      ],
-
-      postComments: {
-        "post-1": [
-          {
-            id: "c-1",
-            authorName: "Алексей Петров",
-            isOfficial: false,
-            text: "Вчера видел рабочих во дворе, вроде начали разметку под площадку делать.",
-            time: "1 час назад",
-          },
-          {
-            id: "c-2",
-            authorName: "ОСИ «Солнечный»",
-            isOfficial: true,
-            text: "Добрый день! Основной этап работ начнется в понедельник. Подробный график опубликуем в разделе «Мой ЖК».",
-            time: "45 минут назад",
-          },
-        ],
-      },
 
       addPost: (post) =>
         set((state) => {
@@ -1685,121 +835,6 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      chats: [
-        {
-          id: "1",
-          name: "Чат дома 1",
-          type: "building",
-          lastMessage: "Алексей: Добрый вечер! Лифт починили?",
-          lastMessageTime: "19:45",
-          unreadCount: 3,
-          avatarColor: "bg-blue-600",
-          icon: "🏢",
-        },
-        {
-          id: "2",
-          name: "Чат подъезда 1",
-          type: "entrance",
-          lastMessage: "Ирина: Спасибо за контакты сантехника!",
-          lastMessageTime: "18:30",
-          unreadCount: 0,
-          avatarColor: "bg-emerald-600",
-          icon: "🚪",
-        },
-        {
-          id: "3",
-          name: "Благоустройство двора",
-          type: "thematic",
-          lastMessage: "Олег: Прикрепил файл сметы",
-          lastMessageTime: "16:12",
-          unreadCount: 5,
-          avatarColor: "bg-amber-600",
-          icon: "🌳",
-        },
-        {
-          id: "4",
-          name: "Родители ЖК",
-          type: "thematic",
-          lastMessage: "Анна: Кто идёт на детскую площадку?",
-          lastMessageTime: "15:45",
-          unreadCount: 0,
-          avatarColor: "bg-rose-500",
-          icon: "🧸",
-        },
-        {
-          id: "5",
-          name: "Личные: Олег Смирнов",
-          type: "direct",
-          lastMessage: "Олег: Добрый день, могу подойти к 18:00",
-          lastMessageTime: "14:20",
-          unreadCount: 1,
-          avatarColor: "bg-purple-600",
-          icon: "⚡",
-        },
-      ],
-
-      messages: {
-        "1": [
-          {
-            id: "m1",
-            chatId: "1",
-            senderId: "user-2",
-            senderName: "Алексей Петров",
-            isMe: false,
-            text: "Добрый вечер, соседи! Кто в курсе, когда закончат работы в лифте?",
-            time: "19:30",
-          },
-          {
-            id: "m2",
-            chatId: "1",
-            senderId: "user-hoa",
-            senderName: "ОСИ «Солнечный»",
-            isOfficial: true,
-            isMe: false,
-            text: "Здравствуйте! Специалисты завершают диагностику, запустят к 20:00.",
-            time: "19:35",
-          },
-          {
-            id: "m3",
-            chatId: "1",
-            senderId: "user-1",
-            senderName: "Мария Иванова",
-            isMe: true,
-            text: "Спасибо большое за оперативность!",
-            time: "19:40",
-          },
-          {
-            id: "m4",
-            chatId: "1",
-            senderId: "user-2",
-            senderName: "Алексей Петров",
-            isMe: false,
-            text: "Отлично, ждём!",
-            time: "19:45",
-          },
-        ],
-        "5": [
-          {
-            id: "m5-1",
-            chatId: "5",
-            senderId: "user-1",
-            senderName: "Мария Иванова",
-            isMe: true,
-            text: "Олег, здравствуйте! Нужна замена автомата в щитке в кв. 45.",
-            time: "14:10",
-          },
-          {
-            id: "m5-2",
-            chatId: "5",
-            senderId: "user-master",
-            senderName: "Олег Смирнов",
-            isMe: false,
-            text: "Добрый день! Да, без проблем. Буду свободен после 18:00, могу подойти к 18:30.",
-            time: "14:20",
-          },
-        ],
-      },
-
       sendMessage: (chatId, text) =>
         set((state) => {
           const previousMessages = state.messages;
@@ -1901,61 +936,6 @@ export const useAppStore = create<AppState>()(
         return newChatId;
       },
 
-      classifieds: [
-        {
-          id: "item-1",
-          title: "Продам удобный диван",
-          category: "Объявления",
-          price: "5 000 ₸",
-          location: "Дом 2, кв. 45 • 3 минуты назад",
-          image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&auto=format&fit=crop&q=80",
-          description: "Раскладной двухместный диван в отличном состоянии. Самовывоз из Дома 2 (есть грузовой лифт).",
-          authorId: "user-1",
-          authorName: "Мария Иванова",
-          authorPhone: "+7 (777) 234-56-78",
-          createdAt: "3 минуты назад",
-        },
-        {
-          id: "item-2",
-          title: "Услуги электрика: монтаж и замена щитков",
-          category: "Услуги",
-          price: "от 500 ₸",
-          location: "Дом 1, кв. 3 • 25 минут назад",
-          image: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&auto=format&fit=crop&q=80",
-          description: "Профессиональный электрик с допуском. Замена автоматов, розеток, люстр, устранение коротких замыканий.",
-          authorId: "user-master",
-          authorName: "Олег Смирнов (Мастер)",
-          authorPhone: "+7 (775) 123-99-88",
-          createdAt: "25 минут назад",
-        },
-        {
-          id: "item-3",
-          title: "Няня для ребёнка на несколько часов",
-          category: "Подработки",
-          price: "Договорная",
-          location: "Дом 1, кв. 18 • 1 час назад",
-          image: "https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600&auto=format&fit=crop&q=80",
-          description: "Педагогическое образование, опыт с детьми 3-7 лет. Могу погулять на площадке или посидеть дома.",
-          authorId: "user-anna",
-          authorName: "Анна Сергеева",
-          authorPhone: "+7 (702) 111-22-33",
-          createdAt: "1 час назад",
-        },
-        {
-          id: "item-4",
-          title: "Помогу с генеральной уборкой",
-          category: "Помощь",
-          price: "Договорная",
-          location: "Подъезд 2 • 2 часа назад",
-          image: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&auto=format&fit=crop&q=80",
-          description: "Качественная эко-уборка квартир после ремонта и генеральная уборка. Свои средства.",
-          authorId: "user-elena",
-          authorName: "Елена Смирнова",
-          authorPhone: "+7 (777) 555-11-22",
-          createdAt: "2 часа назад",
-        },
-      ],
-
       addClassified: (item) =>
         set((state) => {
           void persistClassified({
@@ -2056,32 +1036,12 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: "housesm-store-v4",
-      partialize: (state) => ({
-        currentUser: state.currentUser,
-        registeredUsers: state.registeredUsers,
-        posts: state.posts,
-        chats: state.chats,
-        messages: state.messages,
-        classifieds: state.classifieds,
-        postComments: state.postComments,
-        verificationRequests: state.verificationRequests,
-        serviceRequests: state.serviceRequests,
-        documents: state.documents,
-        officialVotes: state.officialVotes,
-        finance: state.finance,
-        scheduleItems: state.scheduleItems,
-        amenityResources: state.amenityResources,
-        amenityBookings: state.amenityBookings,
-        visitorPasses: state.visitorPasses,
-        residentVehicles: state.residentVehicles,
-        urgentAlert: state.urgentAlert,
-        notificationPreferences: state.notificationPreferences,
-      }),
+      name: isDemoMode() ? "korshi-demo-app-v1" : "korshi-app-v5",
+      partialize: (state) => isDemoMode() ? Object.fromEntries(Object.keys(appFixturesInitial()).map((key) => [key, state[key as keyof AppState]])) : {},
       merge: (persistedState, currentState) => ({
         ...currentState,
-        ...(persistedState as Partial<AppState>),
-        isLoggedIn: !isSupabaseConfigured(),
+        ...(isDemoMode() ? persistedState as Partial<AppState> : {}),
+        isLoggedIn: isDemoMode(),
         isAuthLoading: isSupabaseConfigured(),
         supabaseUserId: null,
       }),

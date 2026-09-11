@@ -1,3 +1,5 @@
+import { operationsFixturesInitial } from "@/demo/initialState";
+import { isDemoMode } from "@/lib/supabase/config";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { loadPlatformSnapshot, syncPlatformMutation } from "@/lib/supabase/platformRepository";
@@ -124,7 +126,7 @@ export interface ComplexSettings {
   whiteLabel: boolean;
 }
 
-interface OperationsState {
+export interface OperationsState {
   memberships: PropertyMembership[];
   passes: AccessPass[];
   accessEvents: AccessEvent[];
@@ -167,58 +169,18 @@ const dateLabel = (value: unknown) => value ? new Date(String(value)).toLocaleSt
 const related = <T,>(value: T | T[] | null | undefined) => Array.isArray(value) ? value[0] : value;
 
 export const useOperationsStore = create<OperationsState>()(persist((set, get) => ({
-  memberships: [
-    { id: "membership-home", complexName: "Солнечный", address: "Алматы, ул. Абая, 150", building: "2", entrance: "1", apartment: "45", role: "owner", isActive: true },
-    { id: "membership-family", complexName: "Жетысу Park", address: "Алматы, мкр. Жетысу-2", building: "4", entrance: "3", apartment: "108", role: "family", isActive: false },
-  ],
-  passes: [
-    { id: "access-pass-1", guestName: "Айдар Н.", kind: "single", code: "481920", validUntil: "Сегодня, 22:00", status: "active", arrivals: 0 },
-    { id: "access-pass-2", guestName: "Семейный автомобиль", kind: "permanent", code: "731155", vehiclePlate: "777 ABC 02", validUntil: "31 декабря", status: "active", arrivals: 14 },
-  ],
-  accessEvents: [
-    { id: "access-event-1", subject: "777 ABC 02", direction: "entry", checkpoint: "Шлагбаум A", occurredAt: "Сегодня, 08:42", result: "allowed" },
-    { id: "access-event-2", subject: "Курьер · код 304118", direction: "entry", checkpoint: "Подъезд 1", occurredAt: "Вчера, 19:16", result: "allowed" },
-    { id: "access-event-3", subject: "Неизвестный автомобиль", direction: "entry", checkpoint: "Шлагбаум A", occurredAt: "Вчера, 02:11", result: "denied" },
-  ],
-  parkingSpots: [
-    { id: "spot-g1", label: "G-01", zone: "Гостевая", kind: "guest", status: "free" },
-    { id: "spot-g2", label: "G-02", zone: "Гостевая", kind: "guest", status: "reserved" },
-    { id: "spot-g3", label: "G-03", zone: "Гостевая", kind: "accessible", status: "free" },
-    { id: "spot-r45", label: "R-45", zone: "Резиденты", kind: "resident", status: "occupied" },
-    { id: "spot-g4", label: "G-04", zone: "Гостевая", kind: "guest", status: "free" },
-    { id: "spot-g5", label: "G-05", zone: "Гостевая", kind: "guest", status: "occupied" },
-  ],
-  parkingBookings: [],
-  works: [
-    { id: "work-1", title: "Уборка входной группы", kind: "cleaning", location: "Дом 2 · подъезд 1", employee: "Айгуль С.", startsAt: "Сегодня, 09:00", status: "in_progress", geo: "43.2383, 76.9457", checklist: [{ id: "w1-1", label: "Влажная уборка", done: true }, { id: "w1-2", label: "Лифтовой холл", done: true }, { id: "w1-3", label: "Фотоотчёт", done: false }] },
-    { id: "work-2", title: "ТО пассажирского лифта", kind: "lift", location: "Дом 1 · подъезд 2", employee: "Lift Service KZ", startsAt: "Завтра, 11:00", status: "planned", checklist: [{ id: "w2-1", label: "Диагностика", done: false }, { id: "w2-2", label: "Проверка аварийной связи", done: false }] },
-    { id: "work-3", title: "Проверка пожарных датчиков", kind: "repair", location: "Дом 3", employee: "Служба эксплуатации", startsAt: "30 августа, 15:00", status: "missed", checklist: [{ id: "w3-1", label: "Обход этажей", done: false }] },
-  ],
-  events: [
-    { id: "event-yard", title: "Соседский пикник", description: "Знакомимся, обсуждаем двор и отдыхаем вместе.", startsAt: "7 сентября, 16:00", location: "Центральный двор", capacity: 40, going: 24, albumCount: 18 },
-    { id: "event-run", title: "Утренняя пробежка", description: "Спокойные 3 км вокруг квартала.", startsAt: "8 сентября, 08:00", location: "У фонтана", capacity: 15, going: 9, albumCount: 0 },
-  ],
-  clubs: [
-    { id: "club-parents", name: "Родители Korshi", description: "Прогулки, кружки и взаимопомощь", members: 46, joined: true },
-    { id: "club-sport", name: "Спорт во дворе", description: "Футбол, бег и тренировки", members: 31, joined: false },
-    { id: "club-green", name: "Зелёный двор", description: "Озеленение и раздельный сбор", members: 22, joined: false },
-  ],
-  notices: [
-    { id: "notice-help", kind: "help", title: "Помогу донести покупки", description: "Свободен вечером, дом 2.", status: "active" },
-    { id: "notice-lost", kind: "lost", title: "Найдены ключи", description: "Связка с синим брелоком у детской площадки.", status: "active" },
-    { id: "notice-pet", kind: "pet", title: "Ищем хозяина кота", description: "Рыжий кот сидит у третьего подъезда.", status: "active" },
-    { id: "notice-buy", kind: "group_buy", title: "Совместная закупка воды", description: "Нужно ещё 5 квартир для оптовой цены.", status: "active" },
-  ],
-  marketplace: { favoriteIds: [], archivedIds: [], reports: [], reviews: [] },
-  notificationChannels: { push: true, emailCritical: true, smsCritical: false, voting: true, payments: true },
-  complexSettings: { name: "Солнечный", logoUrl: "", primaryColor: "#166534", managementPhone: "+7 (727) 123-45-67", managementEmail: "osi@korshi.kz", domain: "solnechny.korshi.kz", languages: ["ru", "kk"], requestCategories: ["Коммунальные сети", "Уборка", "Ремонт", "Безопасность", "Территория"], customRoles: ["Председатель ОСИ", "Диспетчер", "Исполнитель", "Охрана", "Консьерж"], houseRules: "Тихий час с 22:00 до 08:00. Работы выполняются по согласованному графику.", whiteLabel: false },
-  securityLists: { allow: ["Клининг CleanHome", "777 ABC 02"], deny: ["Автомобиль 999 ZZZ 01"] },
+      ...operationsFixturesInitial(),
+
   syncMessage: "",
 
   hydrateFromBackend: async () => {
-    const snapshot = await loadPlatformSnapshot();
+    let snapshot;
+    try { snapshot = await loadPlatformSnapshot(); } catch (error) {
+      set({ ...operationsFixturesInitial(), syncMessage: error instanceof Error ? error.message : "Не удалось загрузить данные" });
+      return;
+    }
     if (!snapshot) return;
-    const next: Partial<OperationsState> = {};
+    const next: Partial<OperationsState> = { ...operationsFixturesInitial(), syncMessage: "" };
 
     if (snapshot.memberships) next.memberships = snapshot.memberships.map((row: any) => {
       const complex = related(row.complex) as any;
@@ -241,91 +203,105 @@ export const useOperationsStore = create<OperationsState>()(persist((set, get) =
     set(next);
   },
   switchMembership: async (id) => {
-    set((state) => ({ memberships: state.memberships.map((item) => ({ ...item, isActive: item.id === id })) }));
-    const result = await syncPlatformMutation({ operation: "rpc", table: "switch_active_membership", payload: { p_membership_id: id } });
-    set({ syncMessage: result.queued ? "Переключение будет завершено после синхронизации" : "Активный объект изменён" });
-  },
+const result = await confirmedMutation({ operation: "rpc", table: "switch_active_membership", payload: { p_membership_id: id } });
+set((state) => ({ memberships: state.memberships.map((item) => ({ ...item, isActive: item.id === id })) }));
+set({ syncMessage: result.queued ? "Переключение будет завершено после синхронизации" : "Активный объект изменён" });
+},
   inviteFamily: async (phone) => {
-    const result = await syncPlatformMutation({ operation: "insert", table: "family_invitations", payload: { phone, role: "family" } });
-    set({ syncMessage: result.queued ? "Приглашение сохранено и будет отправлено после синхронизации" : "Приглашение создано" });
-  },
+const result = await confirmedMutation({ operation: "insert", table: "family_invitations", payload: { phone, role: "family" } });
+set({ syncMessage: result.queued ? "Приглашение сохранено и будет отправлено после синхронизации" : "Приглашение создано" });
+},
   createPass: async (data) => {
-    const item: AccessPass = { ...data, id: crypto.randomUUID(), code: randomCode(), status: "active", arrivals: 0 };
-    set((state) => ({ passes: [item, ...state.passes] }));
-    const result = await syncPlatformMutation({ operation: "insert", table: "access_passes", payload: { guest_name: item.guestName, kind: item.kind, access_code: item.code, vehicle_plate: item.vehiclePlate || null, valid_until: item.validUntil, max_uses: item.kind === "single" || item.kind === "courier" ? 1 : null } });
-    set({ syncMessage: result.queued ? "Пропуск работает локально и ожидает синхронизации" : "Пропуск создан" });
-  },
+const item: AccessPass = { ...data, id: crypto.randomUUID(), code: randomCode(), status: "active", arrivals: 0 };
+const result = await confirmedMutation({ operation: "insert", table: "access_passes", payload: { id: item.id, guest_name: item.guestName, kind: item.kind, access_code: item.code, vehicle_plate: item.vehiclePlate || null, valid_until: item.validUntil, max_uses: item.kind === "single" || item.kind === "courier" ? 1 : null } });
+set((state) => ({ passes: [item, ...state.passes] }));
+set({ syncMessage: result.queued ? "Пропуск работает локально и ожидает синхронизации" : "Пропуск создан" });
+},
   revokePass: async (id) => {
-    set((state) => ({ passes: state.passes.map((item) => item.id === id ? { ...item, status: "revoked" } : item) }));
-    await syncPlatformMutation({ operation: "update", table: "access_passes", recordId: id, payload: { status: "revoked" } });
-  },
+await confirmedMutation({ operation: "update", table: "access_passes", recordId: id, payload: { status: "revoked" } });
+set((state) => ({ passes: state.passes.map((item) => item.id === id ? { ...item, status: "revoked" } : item) }));
+},
   bookParking: async (spotId, vehiclePlate, startsAt, endsAt) => {
-    const item: ParkingBooking = { id: crypto.randomUUID(), spotId, vehiclePlate, startsAt, endsAt, status: "confirmed" };
-    set((state) => ({ parkingBookings: [item, ...state.parkingBookings], parkingSpots: state.parkingSpots.map((spot) => spot.id === spotId ? { ...spot, status: "reserved" } : spot) }));
-    await syncPlatformMutation({ operation: "rpc", table: "book_guest_parking", payload: { p_spot_id: spotId, p_vehicle_plate: vehiclePlate, p_starts_at: startsAt, p_ends_at: endsAt } });
-  },
+const item: ParkingBooking = { id: crypto.randomUUID(), spotId, vehiclePlate, startsAt, endsAt, status: "confirmed" };
+const result = await confirmedMutation({ operation: "rpc", table: "book_guest_parking", payload: { p_spot_id: spotId, p_vehicle_plate: vehiclePlate, p_starts_at: startsAt, p_ends_at: endsAt } });
+if (result.data && typeof result.data === "object" && !Array.isArray(result.data) && typeof result.data.id === "string") item.id = result.data.id;
+set((state) => ({ parkingBookings: [item, ...state.parkingBookings], parkingSpots: state.parkingSpots.map((spot) => spot.id === spotId ? { ...spot, status: "reserved" } : spot) }));
+},
   cancelParking: async (id) => {
-    const booking = get().parkingBookings.find((item) => item.id === id);
-    set((state) => ({ parkingBookings: state.parkingBookings.map((item) => item.id === id ? { ...item, status: "cancelled" } : item), parkingSpots: state.parkingSpots.map((spot) => spot.id === booking?.spotId ? { ...spot, status: "free" } : spot) }));
-    await syncPlatformMutation({ operation: "update", table: "parking_bookings", recordId: id, payload: { status: "cancelled" } });
-  },
+const booking = get().parkingBookings.find((item) => item.id === id);
+await confirmedMutation({ operation: "update", table: "parking_bookings", recordId: id, payload: { status: "cancelled" } });
+set((state) => ({ parkingBookings: state.parkingBookings.map((item) => item.id === id ? { ...item, status: "cancelled" } : item), parkingSpots: state.parkingSpots.map((spot) => spot.id === booking?.spotId ? { ...spot, status: "free" } : spot) }));
+},
   reportParking: async (spotId, reason) => {
-    await syncPlatformMutation({ operation: "insert", table: "parking_reports", payload: { parking_spot_id: spotId, reason } });
-    set({ syncMessage: `Жалоба зарегистрирована · ${nowLabel()}` });
-  },
-  toggleWorkCheck: (workId, itemId) => {
-    const current = get().works.find((work) => work.id === workId)?.checklist.find((item) => item.id === itemId);
-    set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, checklist: work.checklist.map((item) => item.id === itemId ? { ...item, done: !item.done } : item) } : work) }));
-    void syncPlatformMutation({ operation: "update", table: "work_order_checklist_items", recordId: itemId, payload: { completed_at: current?.done ? null : new Date().toISOString() } });
-  },
+await confirmedMutation({ operation: "insert", table: "parking_reports", payload: { parking_spot_id: spotId, reason } });
+set({ syncMessage: `Жалоба зарегистрирована · ${nowLabel()}` });
+},
+  toggleWorkCheck: async (workId, itemId) => {
+const current = get().works.find((work) => work.id === workId)?.checklist.find((item) => item.id === itemId);
+await confirmedMutation({ operation: "update", table: "work_order_checklist_items", recordId: itemId, payload: { completed_at: current?.done ? null : new Date().toISOString() } });
+set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, checklist: work.checklist.map((item) => item.id === itemId ? { ...item, done: !item.done } : item) } : work) }));
+},
   rateWork: async (workId, rating) => {
-    set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, rating } : work) }));
-    await syncPlatformMutation({ operation: "upsert", table: "work_ratings", payload: { work_order_id: workId, rating } });
-  },
+await confirmedMutation({ operation: "upsert", table: "work_ratings", payload: { work_order_id: workId, rating } });
+set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, rating } : work) }));
+},
   rsvp: async (eventId, choice) => {
-    set((state) => ({ events: state.events.map((item) => item.id === eventId ? { ...item, going: item.going + (choice === "going" && item.userRsvp !== "going" ? 1 : item.userRsvp === "going" && choice !== "going" ? -1 : 0), userRsvp: choice } : item) }));
-    await syncPlatformMutation({ operation: "rpc", table: "rsvp_community_event", payload: { p_event_id: eventId, p_choice: choice } });
-  },
+await confirmedMutation({ operation: "rpc", table: "rsvp_community_event", payload: { p_event_id: eventId, p_choice: choice } });
+set((state) => ({ events: state.events.map((item) => item.id === eventId ? { ...item, going: item.going + (choice === "going" && item.userRsvp !== "going" ? 1 : item.userRsvp === "going" && choice !== "going" ? -1 : 0), userRsvp: choice } : item) }));
+},
   toggleClub: async (clubId) => {
-    const club = get().clubs.find((item) => item.id === clubId);
-    set((state) => ({ clubs: state.clubs.map((item) => item.id === clubId ? { ...item, joined: !item.joined, members: Math.max(0, item.members + (item.joined ? -1 : 1)) } : item) }));
-    await syncPlatformMutation({ operation: club?.joined ? "delete" : "insert", table: "community_club_members", match: club?.joined ? { club_id: clubId } : undefined, payload: { club_id: clubId } });
-  },
+const club = get().clubs.find((item) => item.id === clubId);
+await confirmedMutation({ operation: club?.joined ? "delete" : "insert", table: "community_club_members", match: club?.joined ? { club_id: clubId } : undefined, payload: { club_id: clubId } });
+set((state) => ({ clubs: state.clubs.map((item) => item.id === clubId ? { ...item, joined: !item.joined, members: Math.max(0, item.members + (item.joined ? -1 : 1)) } : item) }));
+},
   resolveNotice: async (noticeId) => {
-    set((state) => ({ notices: state.notices.map((item) => item.id === noticeId ? { ...item, status: "resolved" } : item) }));
-    await syncPlatformMutation({ operation: "update", table: "community_notices", recordId: noticeId, payload: { status: "resolved" } });
-  },
+await confirmedMutation({ operation: "update", table: "community_notices", recordId: noticeId, payload: { status: "resolved" } });
+set((state) => ({ notices: state.notices.map((item) => item.id === noticeId ? { ...item, status: "resolved" } : item) }));
+},
   toggleFavorite: async (listingId) => {
-    const removing = get().marketplace.favoriteIds.includes(listingId);
-    set((state) => ({ marketplace: { ...state.marketplace, favoriteIds: removing ? state.marketplace.favoriteIds.filter((id) => id !== listingId) : [...state.marketplace.favoriteIds, listingId] } }));
-    await syncPlatformMutation({ operation: removing ? "delete" : "insert", table: "marketplace_favorites", match: removing ? { classified_id: listingId } : undefined, payload: { classified_id: listingId } });
-  },
+const removing = get().marketplace.favoriteIds.includes(listingId);
+await confirmedMutation({ operation: removing ? "delete" : "insert", table: "marketplace_favorites", match: removing ? { classified_id: listingId } : undefined, payload: { classified_id: listingId } });
+set((state) => ({ marketplace: { ...state.marketplace, favoriteIds: removing ? state.marketplace.favoriteIds.filter((id) => id !== listingId) : [...state.marketplace.favoriteIds, listingId] } }));
+},
   archiveListing: async (listingId) => {
-    set((state) => ({ marketplace: { ...state.marketplace, archivedIds: [...new Set([...state.marketplace.archivedIds, listingId])] } }));
-    await syncPlatformMutation({ operation: "update", table: "classifieds", recordId: listingId, payload: { status: "archived" } });
-  },
+await confirmedMutation({ operation: "update", table: "classifieds", recordId: listingId, payload: { status: "archived" } });
+set((state) => ({ marketplace: { ...state.marketplace, archivedIds: [...new Set([...state.marketplace.archivedIds, listingId])] } }));
+},
   reportListing: async (listingId, reason) => {
-    const report = { id: crypto.randomUUID(), listingId, reason, status: "new" as const };
-    set((state) => ({ marketplace: { ...state.marketplace, reports: [report, ...state.marketplace.reports] } }));
-    await syncPlatformMutation({ operation: "insert", table: "marketplace_reports", payload: { classified_id: listingId, reason } });
-  },
+const report = { id: crypto.randomUUID(), listingId, reason, status: "new" as const };
+await confirmedMutation({ operation: "insert", table: "marketplace_reports", payload: { classified_id: listingId, reason } });
+set((state) => ({ marketplace: { ...state.marketplace, reports: [report, ...state.marketplace.reports] } }));
+},
   reviewListing: async (listingId, rating, text) => {
-    const review = { id: crypto.randomUUID(), listingId, rating, text, author: "Житель ЖК" };
-    set((state) => ({ marketplace: { ...state.marketplace, reviews: [review, ...state.marketplace.reviews] } }));
-    await syncPlatformMutation({ operation: "insert", table: "marketplace_reviews", payload: { classified_id: listingId, rating, text } });
-  },
+const review = { id: crypto.randomUUID(), listingId, rating, text, author: "Житель ЖК" };
+await confirmedMutation({ operation: "insert", table: "marketplace_reviews", payload: { classified_id: listingId, rating, text } });
+set((state) => ({ marketplace: { ...state.marketplace, reviews: [review, ...state.marketplace.reviews] } }));
+},
   setNotificationChannel: async (key, value) => {
-    set((state) => ({ notificationChannels: { ...state.notificationChannels, [key]: value } }));
-    const column = { push: "push", emailCritical: "email_critical", smsCritical: "sms_critical", voting: "voting", payments: "payments" }[key];
-    await syncPlatformMutation({ operation: "upsert", table: "notification_preferences", payload: { [column]: value } });
-    await syncPlatformMutation({ operation: "insert", table: "notification_preference_events", payload: { changes: { [key]: value } } });
-  },
+const column = { push: "push", emailCritical: "email_critical", smsCritical: "sms_critical", voting: "voting", payments: "payments" }[key];
+await confirmedMutation({ operation: "upsert", table: "notification_preferences", payload: { [column]: value } });
+await confirmedMutation({ operation: "insert", table: "notification_preference_events", payload: { changes: { [key]: value } } });
+set((state) => ({ notificationChannels: { ...state.notificationChannels, [key]: value } }));
+},
   updateComplexSettings: async (settings) => {
-    set({ complexSettings: settings });
-    await syncPlatformMutation({ operation: "upsert", table: "complex_settings", payload: { name: settings.name, logo_url: settings.logoUrl || null, primary_color: settings.primaryColor, management_phone: settings.managementPhone, management_email: settings.managementEmail, custom_domain: settings.domain, languages: settings.languages, request_categories: settings.requestCategories, custom_roles: settings.customRoles, house_rules: settings.houseRules, white_label: settings.whiteLabel } });
-  },
+await confirmedMutation({ operation: "upsert", table: "complex_settings", payload: { name: settings.name, logo_url: settings.logoUrl || null, primary_color: settings.primaryColor, management_phone: settings.managementPhone, management_email: settings.managementEmail, custom_domain: settings.domain, languages: settings.languages, request_categories: settings.requestCategories, custom_roles: settings.customRoles, house_rules: settings.houseRules, white_label: settings.whiteLabel } });
+set({ complexSettings: settings });
+},
   triggerSos: async (location) => {
-    await syncPlatformMutation({ operation: "insert", table: "sos_incidents", payload: { location, status: "active" } });
-    set({ syncMessage: "SOS отправлен охране и диспетчеру" });
-  },
-}), { name: "korshi-operations-v1" }));
+await confirmedMutation({ operation: "insert", table: "sos_incidents", payload: { location, status: "active" } });
+set({ syncMessage: "SOS отправлен охране и диспетчеру" });
+},
+}), { name: isDemoMode() ? "korshi-demo-operations-v1" : "korshi-operations-v2", partialize: (state) => isDemoMode() ? state : {}, merge: (persisted, current) => isDemoMode() ? { ...current, ...(persisted as Partial<OperationsState>) } : current }));
+
+async function confirmedMutation(mutation: Parameters<typeof syncPlatformMutation>[0]) {
+  try {
+    const result = await syncPlatformMutation(mutation);
+    if (result.queued) {
+      useOperationsStore.setState({ syncMessage: "Действие сохранено в очереди. Оно начнёт действовать после подтверждения сервера." });
+    }
+    return result;
+  } catch (error) {
+    useOperationsStore.setState({ syncMessage: error instanceof Error ? error.message : "Не удалось сохранить действие" });
+    throw error;
+  }
+}

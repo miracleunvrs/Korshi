@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
+if (process.env.NEXT_PUBLIC_DEMO_MODE === "true" && process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error("DEMO_MODE must run without Supabase credentials. Use a separate environment.");
+}
+
+const backendOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin : "";
+const backendSocket = backendOrigin.replace(/^http/, "ws");
+
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     remotePatterns: [
       {
@@ -40,8 +48,9 @@ const nextConfig: NextConfig = {
               `script-src ${scriptSrc}`,
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https://*.supabase.co https://images.unsplash.com",
-              "connect-src 'self' https://*.supabase.co https://fonts.gstatic.com wss://*.supabase.co ws://localhost:*",
+              `img-src 'self' data: blob: ${backendOrigin} https://images.unsplash.com`,
+              `frame-src 'self' blob: ${backendOrigin}`,
+              `connect-src 'self' ${backendOrigin} ${backendSocket} https://fonts.gstatic.com ws://localhost:*`,
               "frame-ancestors 'none'",
             ].join("; "),
           },

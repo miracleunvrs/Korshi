@@ -27,6 +27,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
 
   Future<void> load() async {
     await HapticFeedback.selectionClick();
+    if (!mounted) return;
     setState(() {
       loading = true;
       error = null;
@@ -44,13 +45,14 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen> {
 
   Future<void> create() async {
     await HapticFeedback.lightImpact();
+    if (!mounted) return;
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => _RequestForm(repository: repository),
     );
-    if (created == true) await load();
+    if (created == true && mounted) await load();
   }
 
   @override
@@ -195,6 +197,7 @@ class _RequestFormState extends State<_RequestForm> {
       );
       if (mounted) {
         await HapticFeedback.heavyImpact();
+        if (!mounted) return;
         Navigator.pop(context, true);
       }
     } catch (cause) {

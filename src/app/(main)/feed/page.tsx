@@ -145,7 +145,7 @@ export default function FeedPage() {
           <div className="absolute right-4 sm:right-6 top-14 z-30 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <p className="text-sm font-extrabold text-gray-900">Уведомления</p>
-              {unreadNotifications > 0 && <span className="text-xs font-bold text-green-600">{unreadNotifications} новых</span>}
+              {unreadNotifications > 0 && <span className="text-xs font-bold text-green-800">{unreadNotifications} новых</span>}
             </div>
             <div className="max-h-80 overflow-y-auto">
               {notifications.length === 0 ? (
@@ -158,7 +158,7 @@ export default function FeedPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-sm font-bold text-gray-900">{notification.title}</p>
-                    <span className="shrink-0 text-[10px] text-gray-400">{notification.createdAt}</span>
+                    <span className="shrink-0 text-[10px] text-gray-600">{notification.createdAt}</span>
                   </div>
                   {notification.body && <p className="mt-1 text-xs leading-relaxed text-gray-600">{notification.body}</p>}
                 </button>
@@ -250,7 +250,7 @@ export default function FeedPage() {
                   quickPostType === "post" ? "bg-green-50 text-green-700 font-bold" : "text-gray-500 hover:bg-gray-100"
                 }`}
               >
-                <ImageIcon className="w-3.5 h-3.5 text-green-600" />
+                <ImageIcon className="w-3.5 h-3.5 text-green-800" />
                 <span className="hidden min-[360px]:inline">Фото</span>
               </button>
               <Link
@@ -286,11 +286,11 @@ export default function FeedPage() {
       {/* Список постов */}
       <div className="divide-y divide-gray-100">
         {filteredPosts.length === 0 ? (
-          <div className="p-16 text-center text-gray-400 space-y-3">
+          <div className="p-16 text-center text-gray-600 space-y-3">
             <p className="text-sm font-semibold">Публикаций по выбранным фильтрам не найдено</p>
             <button
               onClick={handleResetFilters}
-              className="text-xs text-green-600 font-bold underline"
+              className="text-xs text-green-800 font-bold underline"
             >
               Сбросить фильтры
             </button>

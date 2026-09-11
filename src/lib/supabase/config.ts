@@ -1,6 +1,17 @@
 const PLACEHOLDER_PATTERN = /placeholder|your-project|your[_-]|<[^>]+>/i;
 
+export function isDemoMode() {
+  return process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+}
+
+export function requireBackend() {
+  if (isDemoMode()) return false;
+  if (!isSupabaseConfigured()) throw new Error("Supabase не настроен. Демо-режим выключен.");
+  return true;
+}
+
 export function isSupabaseConfigured() {
+  if (isDemoMode()) return false;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

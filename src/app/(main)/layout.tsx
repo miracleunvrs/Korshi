@@ -1,3 +1,4 @@
+import { isDemoMode } from "@/lib/supabase/config";
 import Sidebar from "@/components/layout/Sidebar";
 import RightWidgetPanel from "@/components/layout/RightWidgetPanel";
 import BottomNav from "@/components/layout/BottomNav";
@@ -13,6 +14,7 @@ export default function MainLayout({
   return (
     <div className="min-h-screen overflow-x-clip bg-[#f8f7f2] text-stone-900">
       <a href="#main-content" className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-xl bg-green-900 px-4 py-3 text-sm font-bold text-white transition focus:translate-y-0">Перейти к содержанию</a>
+      {isDemoMode() && <div role="status" className="bg-amber-100 px-4 py-3 text-center text-sm font-bold text-amber-950">Демонстрационный режим — вымышленные данные, действия не отправляются на сервер</div>}
       <BackendErrorBanner />
       <PlatformRuntime />
       <MobileTopBar />

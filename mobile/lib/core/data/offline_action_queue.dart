@@ -29,20 +29,21 @@ class OfflineActionQueue {
   Future<List<OfflineAction>> read() async {
     final preferences = await SharedPreferences.getInstance();
     final raw = preferences.getString(_storageKey);
-    if (raw == null || raw.isEmpty) return const [];
+    if (raw == null || raw.isEmpty) return <OfflineAction>[];
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
       return decoded.map((item) => OfflineAction.fromJson(Map<String, dynamic>.from(item as Map))).toList();
     } catch (_) {
       await preferences.remove(_storageKey);
-      return const [];
+      return <OfflineAction>[];
     }
   }
 
   Future<void> add(String type, Map<String, dynamic> payload) async {
-    final pending = await read();
+    final pending = List<OfflineAction>.of(await read());
+    if (pending.length >= 100) throw StateError('Очередь заполнена. Сначала отправьте сохранённые действия.');
     pending.add(OfflineAction(id: '${DateTime.now().microsecondsSinceEpoch}', type: type, payload: payload, attempts: 0, createdAt: DateTime.now().toUtc().toIso8601String()));
-    await _write(pending.length > 100 ? pending.sublist(pending.length - 100) : pending);
+    await _write(pending);
   }
 
   Future<int> flush(Future<void> Function(OfflineAction action) sender) async {
@@ -50,11 +51,15 @@ class OfflineActionQueue {
     final failed = <OfflineAction>[];
     var synced = 0;
     for (final action in pending) {
+      if (action.attempts >= 10) {
+        failed.add(action);
+        continue;
+      }
       try {
         await sender(action);
         synced++;
       } catch (_) {
-        if (action.attempts < 9) failed.add(action.retried());
+        failed.add(action.retried());
       }
     }
     await _write(failed);

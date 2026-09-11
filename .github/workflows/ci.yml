@@ -19,9 +19,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
       - run: pnpm lint
-      - run: pnpm build
+      - run: pnpm test:unit
+      - run: pnpm db:start
+      - run: pnpm exec supabase db reset
+      - run: pnpm db:test
+      - run: pnpm build:e2e
+      - run: pnpm test:smoke
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e --project=desktop-chromium
+      - run: pnpm test:e2e
 
   flutter:
     runs-on: ubuntu-latest

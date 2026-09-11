@@ -38,25 +38,27 @@ export default function OperationsPage() {
     event.preventDefault();
     if (!guestName.trim() || !validUntil) return setMessage("Укажите гостя и срок действия");
     setBusy(true);
+    try {
     await store.createPass({ guestName: guestName.trim(), kind: passKind, vehiclePlate: vehiclePlate.trim() || undefined, validUntil });
-    setBusy(false); setDialog(null); setMessage("Пропуск создан — QR уже готов");
+    setDialog(null); setMessage("Пропуск создан — QR уже готов");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось создать пропуск"); } finally { setBusy(false); }
   };
 
   const submitParking = async (event: FormEvent) => {
     event.preventDefault();
     if (!spotId || vehiclePlate.trim().length < 4 || !startsAt || !endsAt) return setMessage("Заполните место, автомобиль и время");
     if (new Date(endsAt) <= new Date(startsAt)) return setMessage("Окончание должно быть позже начала");
-    setBusy(true); await store.bookParking(spotId, vehiclePlate.trim().toUpperCase(), startsAt, endsAt); setBusy(false); setDialog(null); setMessage("Гостевое место забронировано");
+    setBusy(true); try { await store.bookParking(spotId, vehiclePlate.trim().toUpperCase(), startsAt, endsAt); setDialog(null); setMessage("Гостевое место забронировано"); } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось отправить действие"); } finally { setBusy(false); }
   };
 
   const submitReport = async (event: FormEvent) => {
     event.preventDefault();
     if (!spotId || reason.trim().length < 5) return setMessage("Выберите место и опишите нарушение");
-    setBusy(true); await store.reportParking(spotId, reason.trim()); setBusy(false); setDialog(null); setMessage("Жалоба отправлена диспетчеру");
+    setBusy(true); try { await store.reportParking(spotId, reason.trim()); setDialog(null); setMessage("Жалоба отправлена диспетчеру"); } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось отправить действие"); } finally { setBusy(false); }
   };
 
   const sendSos = async () => {
-    setBusy(true); await store.triggerSos("Дом 2 · подъезд 1 · по данным профиля"); setBusy(false); setDialog(null); setMessage("SOS отправлен охране и диспетчеру");
+    setBusy(true); try { await store.triggerSos("Местоположение не указано — свяжитесь с жителем"); setDialog(null); setMessage("SOS отправлен охране и диспетчеру"); } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось отправить действие"); } finally { setBusy(false); }
   };
 
   return <div className="min-h-screen bg-[#f8f7f2] pb-10">

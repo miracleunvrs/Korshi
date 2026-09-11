@@ -30,26 +30,29 @@ Korshi — закрытая цифровая среда для жителей ж
 
 Платёжные сущности, квитанции, webhook и защита от повторной обработки реализованы в схеме. Проведение реальных платежей, SMS/push, команды СКУД/шлагбаума и ЭЦП остаются выключенными до подключения выбранных провайдеров и выдачи ключей.
 
-## Быстрый запуск Web
+## Быстрый локальный запуск Web
 
-Требования: Node.js, pnpm и проект Supabase.
+Требования: Node.js, pnpm, Docker и Supabase CLI из зависимостей проекта.
 
 ```bash
 pnpm install
-cp .env.example .env.local
-pnpm dev
+pnpm db:start
+pnpm exec supabase db reset
+pnpm dev:local
 ```
 
-Откройте `http://localhost:3000`.
+Откройте `http://127.0.0.1:3100`. Команда подставляет адрес и публичный ключ только локального Supabase. Учебные аккаунты описаны в `supabase/seeds/diploma.sql`.
 
-В `.env.local` укажите URL проекта и anon key Supabase. `SUPABASE_SERVICE_ROLE_KEY` нельзя использовать в браузере и нельзя коммитить.
+Для подключённого окружения укажите URL проекта и anon key Supabase в `.env.local`. `SUPABASE_SERVICE_ROLE_KEY` нельзя использовать в браузере и нельзя коммитить. Демо-режим включается только явно через `NEXT_PUBLIC_DEMO_MODE=true` и не смешивается с Supabase-конфигурацией.
 
 ## Проверки
 
 ```bash
 pnpm type-check
 pnpm lint
-pnpm build
+pnpm test:unit
+pnpm db:test
+pnpm build:e2e
 pnpm test:smoke
 pnpm exec playwright install chromium
 pnpm test:e2e
@@ -112,6 +115,7 @@ pnpm db:types
 
 ## Документация для разработчиков
 
+- [docs/DIPLOMA.md](docs/DIPLOMA.md) — концепция диплома, требования, диаграммы, тест-план и сценарий защиты;
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — архитектура, потоки данных и правила разработки;
 - [docs/DEBUGGING.md](docs/DEBUGGING.md) — алгоритм поиска багов и частые неисправности;
 - [docs/architecture.md](docs/architecture.md) — схема домена и таблиц Supabase.

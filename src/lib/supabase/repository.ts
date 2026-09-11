@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { requireBackend } from "@/lib/supabase/config";
 import { uploadWithRetry } from "@/lib/supabase/uploadWithRetry";
 import type { PostWithAuthor } from "@/types";
 import type {
@@ -24,7 +24,7 @@ import type {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const configured = () => isSupabaseConfigured();
+const configured = requireBackend;
 const isUuid = (value: string | null | undefined) => Boolean(value && UUID_RE.test(value));
 
 async function currentUserId() {
@@ -376,7 +376,7 @@ export async function persistServiceRequest(
     uploaded.push({ path, file });
   }
 
-  const { data: row, error } = await supabase
+  const { error } = await supabase
     .from("service_requests")
     .insert({
       id: requestId,
@@ -388,13 +388,21 @@ export async function persistServiceRequest(
       location: data.location,
       priority: data.priority,
       public_for_complex: data.publicForComplex,
-    })
-    .select("*")
-    .single();
+    });
   if (error) {
     if (uploaded.length) await supabase.storage.from("house-media").remove(uploaded.map((item) => item.path));
-    throw error;
+    throw new Error(error.message);
   }
+
+  // PostgREST applies the SELECT policy to `insert(...).select()` before the
+  // STABLE visibility helper can observe the new row. Read it in a separate
+  // statement so the author can receive the persisted representation.
+  const { data: row, error: readError } = await supabase
+    .from("service_requests")
+    .select("*")
+    .eq("id", requestId)
+    .single();
+  if (readError) throw new Error(readError.message);
 
   if (uploaded.length) {
     const attachmentResult = await supabase.from("service_request_attachments").insert(uploaded.map(({ path, file }) => ({
@@ -736,10 +744,10 @@ export async function hydrateDomainData() {
   ] = await Promise.all([
     supabase.from("posts").select("*, author:profiles(id, full_name, avatar_url, role, verified), attachments:post_attachments(*), poll:polls(*, options:poll_options(*)), initiative:initiatives(*), fundraiser:fundraisers(*)").order("created_at", { ascending: false }).limit(50),
     supabase.from("chats").select("*").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100),
-    supabase.from("classifieds").select("*, author:profiles(id, full_name, phone)").order("created_at", { ascending: false }).limit(50),
+    supabase.from("classifieds").select("*, author:profiles!classifieds_author_id_fkey(id, full_name, phone)").order("created_at", { ascending: false }).limit(50),
     supabase.from("notifications").select("id, type, title, body, data, is_read, created_at").order("created_at", { ascending: false }).limit(100),
     supabase.from("service_requests").select("*, events:service_request_events(*, actor:profiles(full_name, role)), attachments:service_request_attachments(*)").order("created_at", { ascending: false }).limit(100),
-    supabase.from("house_documents").select("*, publisher:profiles(full_name)").order("published_at", { ascending: false }).limit(200),
+    supabase.from("house_documents").select("*, publisher:profiles!house_documents_published_by_fkey(full_name)").order("published_at", { ascending: false }).limit(200),
     supabase.from("house_document_acknowledgements").select("document_id").eq("user_id", userId),
     supabase.from("official_votes").select("*").order("ends_at", { ascending: false }).limit(100),
     supabase.from("official_vote_ballots").select("vote_id, choice").eq("voter_id", userId),

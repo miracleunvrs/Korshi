@@ -35,4 +35,23 @@ void main() {
     expect(pending, hasLength(1));
     expect(pending.single.attempts, 1);
   });
+  test('retains exhausted actions for inspection instead of deleting them', () async {
+    final queue = OfflineActionQueue();
+    await queue.add('message', {'content': 'Не терять'});
+    var attempts = 0;
+    for (var i = 0; i < 12; i++) {
+      await queue.flush((_) async { attempts++; throw Exception('offline'); });
+    }
+    expect(attempts, 10);
+    expect((await queue.read()).single.attempts, 10);
+  });
+
+  test('can enqueue after emptying the queue', () async {
+    final queue = OfflineActionQueue();
+    await queue.add('message', {'content': 'Первое'});
+    await queue.flush((_) async {});
+    await queue.add('message', {'content': 'Второе'});
+    expect((await queue.read()).single.payload['content'], 'Второе');
+  });
+
 }

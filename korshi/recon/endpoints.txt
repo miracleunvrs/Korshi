@@ -1,0 +1,164 @@
+# Endpoints — Korshi — discovered 2026-09-11
+# Format: METHOD PATH (source) — one per line
+
+# --- Web page routes (Next.js app dir, src/app) ---
+GET / (src/app/page.tsx -> redirect /feed)
+GET /login (src/app/(auth)/login/page.tsx)
+GET /reset-password (src/app/(auth)/reset-password/page.tsx)
+GET /feed (src/app/(main)/feed/page.tsx)
+GET /feed/[postId] (src/app/(main)/feed/[postId]/page.tsx)
+GET /create (src/app/(main)/create/page.tsx)
+GET /chats (src/app/(main)/chats/page.tsx)
+GET /chats/[chatId] (src/app/(main)/chats/[chatId]/page.tsx)
+GET /classifieds (src/app/(main)/classifieds/page.tsx)
+GET /classifieds/[id] (src/app/(main)/classifieds/[id]/page.tsx)
+GET /community (src/app/(main)/community/page.tsx)
+GET /documents (src/app/(main)/documents/page.tsx)
+GET /emergency (src/app/(main)/emergency/page.tsx)
+GET /finance (src/app/(main)/finance/page.tsx)
+GET /hoa (src/app/(main)/hoa/page.tsx)
+GET /hoa/fundraisers/[id] (src/app/(main)/hoa/fundraisers/[id]/page.tsx)
+GET /hoa/manage (src/app/(main)/hoa/manage/page.tsx)
+GET /initiatives/[id] (src/app/(main)/initiatives/[id]/page.tsx)
+GET /admin (src/app/(main)/admin/page.tsx)
+GET /admin/settings (src/app/(main)/admin/settings/page.tsx)
+GET /ai (src/app/(main)/ai/page.tsx)
+GET /notifications (src/app/(main)/notifications/page.tsx)
+GET /operations (src/app/(main)/operations/page.tsx)
+GET /profile (src/app/(main)/profile/page.tsx)
+GET /requests (src/app/(main)/requests/page.tsx) # service_requests
+GET /services (src/app/(main)/services/page.tsx)
+GET /votes (src/app/(main)/votes/page.tsx)
+GET /verify-resident (src/app/(main)/verify-resident/page.tsx)
+GET /sync (src/app/(main)/sync/page.tsx)
+# Layouts/errors
+GET /_next/* (Next internals)
+GET /manifest.json (public/manifest.json)
+GET /icons/icon.svg (public/icons/icon.svg)
+
+# --- API routes (src/app/api) ---
+POST /api/ai (src/app/api/ai/route.ts) # AI center, uses OPENAI_API_KEY, STRIX_LLM
+
+# --- Supabase Auth (via supabase-js) ---
+POST https://yqnseydetzddhgrpjdxw.supabase.co/auth/v1/signup
+POST https://yqnseydetzddhgrpjdxw.supabase.co/auth/v1/token?grant_type=password
+POST https://yqnseydetzddhgrpjdxw.supabase.co/auth/v1/recover
+GET  https://yqnseydetzddhgrpjdxw.supabase.co/auth/v1/user (currentUserId)
+POST https://yqnseydetzddhgrpjdxw.supabase.co/auth/v1/logout
+
+# --- Supabase REST (PostgREST) — public schema tables as /rest/v1/<table> ---
+# Core
+GET/POST /rest/v1/complexes
+GET/POST /rest/v1/buildings
+GET/POST /rest/v1/entrances
+GET/POST /rest/v1/apartments
+GET/POST /rest/v1/profiles
+GET/POST /rest/v1/posts (+ attachments post_attachments, polls, initiatives, fundraisers)
+GET/POST /rest/v1/post_attachments
+GET/POST /rest/v1/comments
+GET/POST /rest/v1/reactions
+GET/POST /rest/v1/polls
+GET/POST /rest/v1/poll_options
+GET/POST /rest/v1/poll_votes
+GET/POST /rest/v1/initiatives
+GET/POST /rest/v1/initiative_supports
+GET/POST /rest/v1/fundraisers
+GET/POST /rest/v1/fundraiser_payments
+GET/POST /rest/v1/chats
+GET/POST /rest/v1/chat_members
+GET/POST /rest/v1/messages
+GET/POST /rest/v1/classifieds
+GET/POST /rest/v1/verification_requests
+GET/POST /rest/v1/notifications
+GET/POST /rest/v1/moderation_logs
+# Extended (012-025)
+GET/POST /rest/v1/service_requests
+GET/POST /rest/v1/service_request_events
+GET/POST /rest/v1/service_request_attachments
+GET/POST /rest/v1/service_request_duplicates
+GET/POST /rest/v1/house_documents
+GET/POST /rest/v1/house_document_acknowledgements
+GET/POST /rest/v1/house_document_folders
+GET/POST /rest/v1/official_votes
+GET/POST /rest/v1/official_vote_ballots
+GET/POST /rest/v1/official_vote_documents
+GET/POST /rest/v1/official_vote_protocols
+GET/POST /rest/v1/finance_accounts
+GET/POST /rest/v1/finance_transactions
+GET/POST /rest/v1/finance_budget_items
+GET/POST /rest/v1/resident_invoices
+GET/POST /rest/v1/resident_payments
+GET/POST /rest/v1/payment_receipts
+GET/POST /rest/v1/emergency_alerts
+GET/POST /rest/v1/emergency_alert_acknowledgements
+GET/POST /rest/v1/emergency_updates
+GET/POST /rest/v1/home_schedule_items
+GET/POST /rest/v1/amenity_resources
+GET/POST /rest/v1/amenity_bookings
+GET/POST /rest/v1/visitor_passes
+GET/POST /rest/v1/resident_vehicles
+GET/POST /rest/v1/complex_memberships
+GET/POST /rest/v1/family_invitations
+GET/POST /rest/v1/role_permissions
+GET/POST /rest/v1/complex_settings
+GET/POST /rest/v1/notification_preferences
+GET/POST /rest/v1/notification_preference_events
+GET/POST /rest/v1/notification_delivery_outbox
+GET/POST /rest/v1/notification_broadcasts
+GET/POST /rest/v1/admin_audit_logs
+GET/POST /rest/v1/access_passes
+GET/POST /rest/v1/access_events
+GET/POST /rest/v1/access_lists
+GET/POST /rest/v1/access_integration_commands
+GET/POST /rest/v1/sos_incidents
+GET/POST /rest/v1/parking_spots
+GET/POST /rest/v1/parking_bookings
+GET/POST /rest/v1/parking_reports
+GET/POST /rest/v1/work_orders
+GET/POST /rest/v1/work_order_checklist_items
+GET/POST /rest/v1/work_order_attachments
+GET/POST /rest/v1/work_ratings
+GET/POST /rest/v1/community_events
+GET/POST /rest/v1/community_event_rsvps
+GET/POST /rest/v1/community_clubs
+GET/POST /rest/v1/marketplace_favorites
+GET/POST /rest/v1/marketplace_reviews
+GET/POST /rest/v1/ai_jobs
+GET/POST /rest/v1/analytics_events
+GET/POST /rest/v1/rate_limit_buckets
+# Storage
+GET/POST /storage/v1/object/house-media/* (uploadWithRetry, signed URLs via createSignedUrl)
+
+# --- Supabase RPCs (POST /rest/v1/rpc/<fn>) ---
+POST /rpc/create_direct_chat (p_target_user)
+POST /rpc/review_verification_request (p_request_id, p_approved, p_reason)
+POST /rpc/record_fundraiser_payment
+POST /rpc/add_service_request_comment
+POST /rpc/update_service_request_status
+POST /rpc/rate_service_request
+POST /rpc/reopen_service_request
+POST /rpc/create_amenity_booking
+POST /rpc/cancel_amenity_booking
+POST /rpc/book_guest_parking
+POST /rpc/cast_official_vote
+POST /rpc/get_official_vote_results
+POST /rpc/record_finance_transaction
+POST /rpc/publish_emergency_alert
+POST /rpc/resolve_emergency_alert
+POST /rpc/rsvp_community_event
+POST /rpc/merge_service_requests
+POST /rpc/switch_active_membership
+POST /rpc/consume_rate_limit
+POST /rpc/can_view_service_request
+POST /rpc/get_document_acknowledgement_stats
+POST /rpc/execute_platform_mutation (platformRepository offline queue)
+POST /rpc/get_official_vote_results (duplicate)
+# Auth helpers
+POST /rpc/auth_user_complex_id
+POST /rpc/auth_user_verified (implied)
+
+# --- Realtime (WebSocket) ---
+WSS https://yqnseydetzddhgrpjdxw.supabase.co/realtime/v1/websocket -> channels housesm-domain-sync on posts/poll_votes/comments/reactions/chats/messages/classifieds/notifications/service_requests/house_documents etc
+
+# --- Mobile (Flutter) ---
+# Same Supabase REST/RPC via house_repository.dart, offline_action_queue.dart
