@@ -63,7 +63,7 @@ export default function OperationsPage() {
     setBusy(true);
     try {
     const result = await store.createPass({ guestName: guestName.trim(), kind: passKind, vehiclePlate: vehiclePlate.trim() || undefined, validUntil });
-    setDialog(null); setMessage(result.queued ? "Пропуск в очереди и пока не действует. Дождитесь подтверждения сервера." : "Пропуск создан — QR уже готов");
+    setDialog(null); setMessage(result.queued ? "Пропуск в очереди и пока не действует. Дождитесь подтверждения сервера." : "Пропуск отправлен на одобрение ОСИ. QR заработает после одобрения.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось создать пропуск"); } finally { setBusy(false); }
   };
 

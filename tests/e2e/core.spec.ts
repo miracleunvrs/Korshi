@@ -35,7 +35,7 @@ test.describe("critical resident routes", () => {
   }
 });
 
-test("resident can create and revoke a QR pass", async ({ page }) => {
+test("a resident pass waits for HOA approval and can be cancelled", async ({ page }) => {
   await openProtected(page, "/operations");
   await page.getByRole("button", { name: "Новый пропуск" }).click();
   const dialog = page.getByRole("dialog");
@@ -43,13 +43,13 @@ test("resident can create and revoke a QR pass", async ({ page }) => {
   await dialog.getByLabel("Имя гостя").fill(guest);
   await dialog.getByLabel("Действует до").fill(soonLocal());
   await dialog.getByRole("button", { name: "Создать QR-пропуск" }).click();
-  await expect(page.getByText("Пропуск создан — QR уже готов")).toBeVisible();
-  const card = page.getByRole("article").filter({ hasText: guest });
-  await expect(card.getByLabel(`QR-пропуск для ${guest}`)).toBeVisible();
+  await expect(page.getByText("Пропуск отправлен на одобрение ОСИ")).toBeVisible();
+  const pending = page.locator("section").filter({ hasText: "Ждут одобрения ОСИ" }).locator("div.rounded-2xl").filter({ hasText: guest });
   await page.reload();
-  await expect(card).toBeVisible();
-  await card.getByRole("button", { name: "Отозвать" }).click();
-  await expect(card).toHaveCount(0);
+  await expect(pending).toBeVisible();
+  await expect(page.getByLabel(`QR-пропуск для ${guest}`)).toHaveCount(0);
+  await pending.getByRole("button", { name: "Отменить" }).click();
+  await expect(pending).toHaveCount(0);
 });
 
 test("mobile navigation and request bottom sheet remain usable", async ({ page }, testInfo) => {
