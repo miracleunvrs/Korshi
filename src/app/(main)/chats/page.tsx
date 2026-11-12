@@ -31,10 +31,10 @@ export default function ChatsPage() {
         <div className="flex items-center justify-between">
           <h1 className="font-bold text-gray-900 text-lg">Чаты</h1>
           <Link
-            href="/create"
+            href="/chats/new"
             className="text-xs font-semibold text-green-600 flex items-center gap-1 hover:text-green-700 bg-green-50 px-3 py-1.5 rounded-full"
           >
-            <Plus className="w-4 h-4" /> Создать группу
+            <Plus className="w-4 h-4" /> Новый чат
           </Link>
         </div>
 

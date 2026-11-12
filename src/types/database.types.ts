@@ -1017,7 +1017,9 @@ export type Database = {
           city: string
           created_at: string
           id: string
+          latitude: number | null
           logo_url: string | null
+          longitude: number | null
           name: string
         }
         Insert: {
@@ -1025,7 +1027,9 @@ export type Database = {
           city?: string
           created_at?: string
           id?: string
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           name: string
         }
         Update: {
@@ -1033,7 +1037,9 @@ export type Database = {
           city?: string
           created_at?: string
           id?: string
+          latitude?: number | null
           logo_url?: string | null
+          longitude?: number | null
           name?: string
         }
         Relationships: []
@@ -2908,6 +2914,7 @@ export type Database = {
           created_at: string
           id: string
           label: string | null
+          photo_path: string
           plate: string
           resident_id: string
         }
@@ -2916,6 +2923,7 @@ export type Database = {
           created_at?: string
           id?: string
           label?: string | null
+          photo_path: string
           plate: string
           resident_id: string
         }
@@ -2924,6 +2932,7 @@ export type Database = {
           created_at?: string
           id?: string
           label?: string | null
+          photo_path?: string
           plate?: string
           resident_id?: string
         }
@@ -3779,6 +3788,10 @@ export type Database = {
         }
       }
       create_direct_chat: { Args: { p_target_user: string }; Returns: string }
+      create_group_chat: {
+        Args: { p_member_ids?: string[]; p_name: string }
+        Returns: string
+      }
       create_official_vote: {
         Args: {
           p_basis: Database["public"]["Enums"]["official_vote_basis"]
@@ -4065,6 +4078,10 @@ export type Database = {
       resolve_emergency_alert: {
         Args: { p_alert_id: string }
         Returns: undefined
+      }
+      review_access_pass: {
+        Args: { p_approve: boolean; p_pass_id: string }
+        Returns: string
       }
       review_fundraiser_payment: {
         Args: { p_confirmed: boolean; p_payment_id: string }

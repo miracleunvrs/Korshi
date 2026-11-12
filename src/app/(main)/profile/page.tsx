@@ -23,6 +23,7 @@ import { useAppStore } from "@/stores/appStore";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { complexName } from "@/lib/appConfig";
+import { resizeAvatar, uploadAvatar } from "@/lib/avatar";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -33,6 +34,20 @@ export default function ProfilePage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [invitePhone, setInvitePhone] = useState("");
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+
+  const changeAvatar = async (file: File) => {
+    setAvatarBusy(true); setAvatarError("");
+    try {
+      const avatarUrl = await uploadAvatar(currentUser.id, await resizeAvatar(file));
+      useAppStore.setState((state) => ({ currentUser: { ...state.currentUser, avatarUrl } }));
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : "Не удалось сменить аватар");
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
 
   // Edit form state
   const [editName, setEditName] = useState(currentUser.fullName);
@@ -85,7 +100,12 @@ export default function ProfilePage() {
       <div className="px-6 pb-6 relative">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-4">
           <div className="relative inline-block">
-            <Avatar url={currentUser.avatarUrl} name={currentUser.fullName} size={128} className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl ring-4 ring-white shadow-xl bg-white" />
+            <label className="block cursor-pointer" title="Сменить аватар">
+              <Avatar url={currentUser.avatarUrl} name={currentUser.fullName} size={128} className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl ring-4 ring-white shadow-xl bg-white" />
+              <span className="absolute left-1/2 top-2 -translate-x-1/2 rounded-full bg-stone-950/70 px-2 py-0.5 text-[10px] font-bold text-white">{avatarBusy ? "Загрузка…" : "Сменить"}</span>
+              <input type="file" accept="image/*" className="sr-only" disabled={avatarBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) void changeAvatar(file); e.target.value = ""; }} />
+            </label>
+            {avatarError && <p role="alert" className="mt-2 max-w-40 text-[11px] font-semibold text-rose-700">{avatarError}</p>}
             {currentUser.verified && (
               <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center shadow-lg ring-2 ring-white">
                 <ShieldCheck className="w-5 h-5" />

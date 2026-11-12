@@ -51,7 +51,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com data:",
               `img-src 'self' data: blob: ${backendOrigin} https://images.unsplash.com`,
               `media-src 'self' blob: ${backendOrigin}`,
-              `frame-src 'self' blob: ${backendOrigin}`,
+              `frame-src 'self' blob: ${backendOrigin} https://www.openstreetmap.org`,
               `connect-src 'self' ${backendOrigin} ${backendSocket} https://fonts.gstatic.com ws://localhost:*`,
               "frame-ancestors 'none'",
             ].join("; "),

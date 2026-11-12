@@ -1,6 +1,7 @@
 import { emptyOperationsState } from "@/stores/initialState";
 import { localDateTimeToIso } from "@/lib/datetime";
 import { complexName } from "@/lib/appConfig";
+import { reviewAccessPass } from "@/lib/supabase/repository";
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -27,7 +28,7 @@ export interface AccessPass {
   code: string;
   vehiclePlate?: string;
   validUntil: string;
-  status: "active" | "used" | "revoked" | "expired";
+  status: "pending" | "active" | "used" | "revoked" | "expired";
   arrivals: number;
 }
 
@@ -117,6 +118,7 @@ export interface OperationsState {
   inviteFamily: (phone: string) => Promise<void>;
   createPass: (data: Pick<AccessPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">) => Promise<{ queued: boolean }>;
   revokePass: (id: string) => Promise<void>;
+  reviewPass: (id: string, approve: boolean) => Promise<void>;
   bookParking: (spotId: string, vehiclePlate: string, startsAt: string, endsAt: string) => Promise<{ queued: boolean }>;
   cancelParking: (id: string) => Promise<void>;
   reportParking: (spotId: string, reason: string) => Promise<void>;
@@ -128,11 +130,9 @@ export interface OperationsState {
   reviewListing: (listingId: string, rating: number, text: string) => Promise<void>;
   setNotificationChannel: (key: keyof NotificationChannels, value: boolean) => Promise<void>;
   updateComplexSettings: (settings: ComplexSettings) => Promise<void>;
-  triggerSos: (location: string) => Promise<void>;
 }
 
 const nowLabel = () => new Date().toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-const randomCode = () => String(Math.floor(100000 + Math.random() * 900000));
 const dateLabel = (value: unknown) => value ? new Date(String(value)).toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 const related = <T,>(value: T | T[] | null | undefined) => Array.isArray(value) ? value[0] : value;
 
@@ -198,14 +198,19 @@ set({ syncMessage: result.queued ? "Приглашение сохранено и
 },
   createPass: async (data) => {
 const validUntil = localDateTimeToIso(data.validUntil);
-const item: AccessPass = { ...data, validUntil: dateLabel(validUntil), id: crypto.randomUUID(), code: "", status: "active", arrivals: 0 };
+const item: AccessPass = { ...data, validUntil: dateLabel(validUntil), id: crypto.randomUUID(), code: "", status: "pending", arrivals: 0 };
 // Код доступа выдаёт сервер (криптостойкий default колонки); клиент его не задаёт.
 const result = await confirmedMutation({ operation: "insert", table: "access_passes", payload: { id: item.id, guest_name: item.guestName, kind: item.kind, vehicle_plate: item.vehiclePlate || null, valid_until: validUntil, max_uses: item.kind === "single" || item.kind === "courier" ? 1 : null } });
 if (result.queued) return result;
 const created = result.data && typeof result.data === "object" && !Array.isArray(result.data) ? result.data : null;
-item.code = typeof created?.access_code === "string" ? created.access_code : randomCode();
-set((state) => ({ passes: [item, ...state.passes], syncMessage: "Пропуск создан" }));
+item.code = typeof created?.access_code === "string" ? created.access_code : "";
+set((state) => ({ passes: [item, ...state.passes], syncMessage: "Пропуск отправлен на одобрение ОСИ" }));
 return result;
+},
+  reviewPass: async (id, approve) => {
+const result = await reviewAccessPass(id, approve);
+if (result === "already_reviewed") set({ syncMessage: "Пропуск уже рассмотрен" });
+set((state) => ({ passes: state.passes.map((item) => item.id === id && result !== "already_reviewed" ? { ...item, status: approve ? "active" : "revoked" } : item) }));
 },
   revokePass: async (id) => {
 const result = await confirmedMutation({ operation: "update", table: "access_passes", recordId: id, payload: { status: "revoked" } });
@@ -271,10 +276,6 @@ set((state) => ({ notificationChannels: { ...state.notificationChannels, [key]: 
   updateComplexSettings: async (settings) => {
 await confirmedMutation({ operation: "upsert", table: "complex_settings", payload: { name: settings.name, logo_url: settings.logoUrl || null, primary_color: settings.primaryColor, management_phone: settings.managementPhone, management_email: settings.managementEmail, custom_domain: settings.domain, languages: settings.languages, request_categories: settings.requestCategories, custom_roles: settings.customRoles, house_rules: settings.houseRules, white_label: settings.whiteLabel } });
 set({ complexSettings: settings });
-},
-  triggerSos: async (location) => {
-await confirmedMutation({ operation: "insert", table: "sos_incidents", payload: { location, status: "active" } });
-set({ syncMessage: "SOS зарегистрирован на сервере. Получение охраной не подтверждено; при опасности звоните 112." });
 },
 }), { name: "korshi-operations-v2", partialize: () => ({}), merge: (_persisted, current) => current }));
 

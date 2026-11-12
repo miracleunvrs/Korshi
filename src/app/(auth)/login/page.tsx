@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import NextImage from "next/image";
 import { ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { APP_CONFIG } from "@/lib/appConfig";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { loadSignupBuildings, type SignupBuilding } from "@/lib/supabase/repository";
+import { resizeAvatar, savePendingAvatar } from "@/lib/avatar";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,6 +31,8 @@ export default function LoginPage() {
   const [regBuilding, setRegBuilding] = useState("");
   const [regApartment, setRegApartment] = useState("");
   const [buildings, setBuildings] = useState<SignupBuilding[]>([]);
+  const [regAvatar, setRegAvatar] = useState<Blob | null>(null);
+  const [regAvatarPreview, setRegAvatarPreview] = useState("");
   const [regRole, setRegRole] = useState<"resident" | "service_provider">("resident");
   const [regError, setRegError] = useState("");
   const [regLoading, setRegLoading] = useState(false);
@@ -96,6 +100,7 @@ export default function LoginPage() {
         apartmentNumber: regApartment.trim(),
         role: regRole,
       });
+      if (regAvatar) await savePendingAvatar(regAvatar);
       setRegNeedsConfirmation(result.requiresEmailConfirmation);
       setRegSuccess(true);
       if (!result.requiresEmailConfirmation) {
@@ -176,6 +181,25 @@ export default function LoginPage() {
               </div>
             ) : (
               <>
+                <label className="flex items-center gap-3 rounded-xl border border-dashed border-gray-300 p-3 cursor-pointer hover:bg-gray-50">
+                  {regAvatarPreview
+                    ? <NextImage src={regAvatarPreview} alt="Ваш аватар" width={56} height={56} unoptimized className="h-14 w-14 rounded-2xl object-cover" />
+                    : <span className="grid h-14 w-14 place-items-center rounded-2xl bg-gray-100 text-xs font-bold text-gray-500">Фото</span>}
+                  <span className="text-xs font-semibold text-gray-700">{regAvatarPreview ? "Сменить аватар" : "Добавить аватар (необязательно)"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      void resizeAvatar(file).then((avatar) => {
+                        setRegAvatar(avatar);
+                        setRegAvatarPreview(URL.createObjectURL(avatar));
+                      }).catch((error) => setRegError(error instanceof Error ? error.message : "Не удалось обработать фото"));
+                    }}
+                  />
+                </label>
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
                     ФИО (как в удостоверении)

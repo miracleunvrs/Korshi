@@ -216,6 +216,60 @@ export async function persistMessage(chatId: string, content: string, messageId?
   if (error && !(error.code === "23505" && isUuid(messageId))) throw error;
 }
 
+export type Neighbour = { id: string; name: string; avatarUrl: string | null };
+
+/** Подтверждённые соседи по ЖК — кандидаты в участники группы. */
+export async function loadNeighbours(): Promise<Neighbour[]> {
+  configured();
+  const { supabase, userId, profile } = await profileContext();
+  if (!profile?.complex_id) return [];
+  const { data, error } = await supabase.from("profiles")
+    .select("id, full_name, avatar_url").eq("complex_id", profile.complex_id).eq("verified", true).neq("id", userId)
+    .order("full_name").limit(500);
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ id: row.id, name: row.full_name || "Без имени", avatarUrl: row.avatar_url }));
+}
+
+export async function reviewAccessPass(passId: string, approve: boolean) {
+  configured();
+  const { data, error } = await (createClient() as any).rpc("review_access_pass", { p_pass_id: passId, p_approve: approve });
+  if (error) throw error;
+  return data as "approved" | "rejected" | "already_reviewed" | "not_found";
+}
+
+export type WorkOrderDraft = { kind: string; title: string; location: string; startsAt: string; checklist: string[] };
+
+/** Работа по дому от ОСИ: заказ и чек-лист. */
+export async function createWorkOrder(draft: WorkOrderDraft) {
+  configured();
+  const { supabase } = await managementContext();
+  const { data, error } = await supabase.from("work_orders").insert({
+    kind: draft.kind,
+    title: draft.title,
+    location: draft.location,
+    starts_at: localDateTimeToIso(draft.startsAt),
+  }).select("id").single();
+  if (error) throw error;
+  const items = draft.checklist.map((label, position) => ({ work_order_id: data.id, label, position }));
+  if (items.length) {
+    const checklist = await supabase.from("work_order_checklist_items").insert(items);
+    if (checklist.error) {
+      await supabase.from("work_orders").delete().eq("id", data.id);
+      throw checklist.error;
+    }
+  }
+}
+
+export async function createGroupChat(name: string, memberIds: string[]) {
+  configured();
+  const { data, error } = await (createClient() as any).rpc("create_group_chat", {
+    p_name: name,
+    p_member_ids: memberIds.filter(isUuid),
+  });
+  if (error) throw error;
+  return data as string;
+}
+
 export async function createDirectChat(targetUserId: string) {
   if (!configured() || !isUuid(targetUserId)) {
     throw new Error("Этот пользователь ещё не подключён к серверу");
@@ -852,14 +906,20 @@ export async function persistAmenityBooking(resourceId: string, startsAt: string
   return { id: item.id, resourceId: item.resource_id, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: new Date(item.ends_at).toLocaleString("ru-RU"), status: item.status };
 }
 
-export async function persistResidentVehicle(plate: string, label: string): Promise<ResidentVehicle | null> {
+export async function persistResidentVehicle(plate: string, label: string, photo: File): Promise<ResidentVehicle | null> {
   if (!configured()) return null;
   const { supabase, userId, profile } = await profileContext();
   if (!profile.complex_id) throw new Error("Профиль ещё не привязан к ЖК");
+  if (!photo.type.startsWith("image/")) throw new Error("Приложите фото автомобиля");
   const normalizedPlate = plate.trim().toUpperCase();
-  const { data: row, error } = await supabase.from("resident_vehicles").insert({ complex_id: profile.complex_id, resident_id: userId, plate: normalizedPlate, label: label.trim() || null }).select("*").single();
-  if (error) throw error;
-  return { id: row.id, plate: row.plate, label: row.label || "Автомобиль" };
+  const path = `${userId}/vehicles/${crypto.randomUUID()}-${photo.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+  await uploadWithRetry(() => supabase.storage.from("house-media").upload(path, photo, { cacheControl: "3600", upsert: false, contentType: photo.type }));
+  const { data: row, error } = await supabase.from("resident_vehicles").insert({ complex_id: profile.complex_id, resident_id: userId, plate: normalizedPlate, label: label.trim() || null, photo_path: path }).select("*").single();
+  if (error) {
+    await supabase.storage.from("house-media").remove([path]);
+    throw error;
+  }
+  return { id: row.id, plate: row.plate, label: row.label || "Автомобиль", photoUrl: await signedMediaUrl(supabase, path) };
 }
 
 const CHAT_SELECT = "*";
@@ -1285,7 +1345,7 @@ export async function hydrateDomainData() {
   const scheduleItems: HomeScheduleItem[] = (scheduleResult.data || []).map((item: any) => ({ id: item.id, kind: item.kind, title: item.title, description: item.description || "", location: item.location, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: item.ends_at ? new Date(item.ends_at).toLocaleString("ru-RU") : undefined, status: item.status }));
   const amenityResources: AmenityResource[] = (resourcesResult.data || []).map((item: any) => ({ id: item.id, name: item.name, description: item.description || "", location: item.location, capacity: item.capacity || undefined, price: Number(item.price) }));
   const amenityBookings: AmenityBooking[] = (bookingsResult.data || []).map((item: any) => ({ id: item.id, resourceId: item.resource_id, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: new Date(item.ends_at).toLocaleString("ru-RU"), status: item.status }));
-  const residentVehicles: ResidentVehicle[] = (residentVehiclesResult.data || []).map((item: any) => ({ id: item.id, plate: item.plate, label: item.label || "Автомобиль" }));
+  const residentVehicles: ResidentVehicle[] = await Promise.all((residentVehiclesResult.data || []).map(async (item: any) => ({ id: item.id, plate: item.plate, label: item.label || "Автомобиль", photoUrl: await signedMediaUrl(supabase, item.photo_path) })));
 
   return {
     posts,

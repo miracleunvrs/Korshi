@@ -21,6 +21,7 @@ function store(queued) {
     '@/lib/supabase/config': {},
     '@/lib/datetime': load('../../src/lib/datetime.ts', {}),
     '@/lib/appConfig': load('../../src/lib/appConfig.ts', {}),
+    '@/lib/supabase/repository': { reviewAccessPass: async () => 'approved' },
     'zustand/middleware': { persist: (initializer) => initializer },
     '@/lib/supabase/platformRepository': { syncPlatformMutation: async () => ({ queued, data: null }) },
     '@/stores/appStore': { useAppStore: { getState: () => ({}) } },
@@ -109,6 +110,7 @@ function switchingStore(queued, hooks) {
     '@/lib/supabase/config': {},
     '@/lib/datetime': load('../../src/lib/datetime.ts', {}),
     '@/lib/appConfig': load('../../src/lib/appConfig.ts', {}),
+    '@/lib/supabase/repository': { reviewAccessPass: async () => 'approved' },
     'zustand/middleware': { persist: (initializer) => initializer },
     '@/lib/supabase/platformRepository': {
       syncPlatformMutation: async () => { hooks.mutated++; return { queued, data: null }; },

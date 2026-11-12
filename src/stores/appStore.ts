@@ -106,17 +106,19 @@ async function loadAccount(user: User): Promise<UserAccount> {
   let apartmentNumber = fallback.apartmentNumber;
   let currentComplexName = fallback.complexName;
   let currentComplexAddress = fallback.complexAddress;
+  let complexLocation: UserAccount["complexLocation"];
 
   if (profile.complex_id) {
     const complexResult = await supabase
       .from("complexes")
-      .select("name, address, city")
+      .select("name, address, city, latitude, longitude")
       .eq("id", profile.complex_id)
       .maybeSingle();
-    const complexData = complexResult.data as { name: string; address: string; city: string } | null;
+    const complexData = complexResult.data as { name: string; address: string; city: string; latitude: number | null; longitude: number | null } | null;
     if (complexData) {
       currentComplexName = complexName(complexData.name);
       currentComplexAddress = [complexData.city, complexData.address].filter(Boolean).join(", ");
+      if (complexData.latitude != null && complexData.longitude != null) complexLocation = { latitude: complexData.latitude, longitude: complexData.longitude };
     }
   }
 
@@ -171,6 +173,7 @@ async function loadAccount(user: User): Promise<UserAccount> {
     complexId: profile.complex_id || undefined,
     complexName: currentComplexName,
     complexAddress: currentComplexAddress,
+    complexLocation,
     entranceNumber,
     apartmentNumber,
     verified: profile.verified,
@@ -603,8 +606,8 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ amenityBookings: [booking, ...state.amenityBookings] }));
       },
 
-      addResidentVehicle: async (plate, label) => {
-        const vehicle = await persistResidentVehicle(plate, label);
+      addResidentVehicle: async (plate, label, photo) => {
+        const vehicle = await persistResidentVehicle(plate, label, photo);
         if (!vehicle) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((state) => ({ residentVehicles: [vehicle, ...state.residentVehicles] }));
       },

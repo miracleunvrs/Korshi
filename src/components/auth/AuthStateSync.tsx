@@ -4,10 +4,22 @@ import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useAppStore } from "@/stores/appStore";
+import { takePendingAvatar, uploadAvatar } from "@/lib/avatar";
 
 export default function AuthStateSync() {
   const syncAuthState = useAppStore((state) => state.syncAuthState);
   const hydrateDomainData = useAppStore((state) => state.hydrateDomainData);
+  const userId = useAppStore((state) => state.supabaseUserId);
+
+  // Аватар, выбранный при регистрации, загружается при первом входе.
+  useEffect(() => {
+    if (!userId) return;
+    void takePendingAvatar().then(async (avatar) => {
+      if (!avatar) return;
+      const avatarUrl = await uploadAvatar(userId, avatar);
+      useAppStore.setState((state) => ({ currentUser: { ...state.currentUser, avatarUrl } }));
+    }).catch((error) => useAppStore.setState({ backendError: error instanceof Error ? `Аватар не загружен: ${error.message}` : "Аватар не загружен" }));
+  }, [userId]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;

@@ -11,6 +11,7 @@ export interface UserAccount {
   complexId?: string;
   complexName?: string;
   complexAddress?: string;
+  complexLocation?: { latitude: number; longitude: number };
   buildingId?: string;
   entranceId?: string;
   entranceNumber: number;
@@ -239,6 +240,7 @@ export interface ResidentVehicle {
   id: string;
   plate: string;
   label: string;
+  photoUrl: string;
 }
 
 
@@ -325,7 +327,7 @@ export interface AppState {
   amenityBookings: AmenityBooking[];
   residentVehicles: ResidentVehicle[];
   createAmenityBooking: (resourceId: string, startsAt: string, endsAt: string) => Promise<void>;
-  addResidentVehicle: (plate: string, label: string) => Promise<void>;
+  addResidentVehicle: (plate: string, label: string, photo: File) => Promise<void>;
 
   // Экстренные оповещения ОСИ
   urgentAlert: EmergencyAlert | null;
