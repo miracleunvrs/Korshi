@@ -478,6 +478,26 @@ export async function loadComplexApartments(): Promise<ApartmentOption[]> {
   }).sort((a: ApartmentOption, b: ApartmentOption) => a.label.localeCompare(b.label, "ru", { numeric: true }));
 }
 
+/** Дома и их квартиры с подъездом — для формы регистрации, до входа. */
+export type SignupBuilding = { number: string; entranceByApartment: Record<string, number> };
+
+export async function loadSignupBuildings(): Promise<SignupBuilding[]> {
+  const { data, error } = await createClient().from("apartments")
+    .select("number, entrance:entrances(number, building:buildings(number))")
+    .limit(5000);
+  if (error) throw error;
+  const buildings = new Map<string, SignupBuilding>();
+  for (const row of (data || []) as any[]) {
+    const entrance = relation<any>(row.entrance);
+    const building = relation<any>(entrance?.building);
+    if (!building) continue;
+    const entry: SignupBuilding = buildings.get(building.number) ?? { number: building.number, entranceByApartment: {} };
+    entry.entranceByApartment[row.number] = entrance.number;
+    buildings.set(building.number, entry);
+  }
+  return [...buildings.values()].sort((a, b) => a.number.localeCompare(b.number, "ru", { numeric: true }));
+}
+
 export async function loadApartmentInvites(): Promise<ApartmentInvite[]> {
   if (!configured()) return [];
   const { data, error } = await (createClient() as any).from("apartment_invites")
@@ -1129,7 +1149,7 @@ export async function hydrateDomainData() {
     title: item.title,
     category: item.category,
     price: item.price == null ? "Договорная" : `${Number(item.price).toLocaleString("ru-RU")} ${item.currency === "KZT" ? "₸" : item.currency}`,
-    location: item.location || "Мой ЖК",
+    location: item.location || "",
     image: await signedMediaUrl(supabase, item.image_path),
     description: item.description,
     authorId: item.author_id,

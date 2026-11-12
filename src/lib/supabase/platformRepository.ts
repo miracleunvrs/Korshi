@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { isDemoMode, requireBackend } from "@/lib/supabase/config";
+import { requireBackend } from "@/lib/supabase/config";
 import type { Database, Json } from "@/types/database.types";
 import { afterFailure, classifyFailure, enqueue, type QueueItem } from "@/features/sync/queue";
 
@@ -86,7 +86,6 @@ async function executeMutation(item: PendingMutation) {
   return data;
 }
 export async function loadPlatformSnapshot() {
-  if (isDemoMode()) return null;
   requireBackend();
   const supabase = createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -122,7 +121,6 @@ export async function loadPlatformSnapshot() {
 }
 
 export async function syncPlatformMutation(mutation: PlatformMutation) {
-  if (isDemoMode()) return { queued: false, demo: true, data: null as Json };
   requireBackend();
   const isSos = mutation.table === "sos_incidents";
   if (isSos && !navigator.onLine) throw new Error("Нет связи: SOS не отправлен. При опасности звоните 112.");
@@ -148,25 +146,25 @@ export async function syncPlatformMutation(mutation: PlatformMutation) {
   if (isSos) {
     try {
       const data = await executeMutation(item);
-      return { queued: false, demo: false, data };
+      return { queued: false, data };
     } catch {
       throw new Error("Нет подтверждения регистрации SOS. Сигнал не будет отправлен автоматически позже. При опасности звоните 112.");
     }
   }
   // Save before transmission: a lost response must not cause a second server operation.
   writeQueue(enqueue(readQueue(), item));
-  if (!navigator.onLine) return { queued: true, demo: false, data: null as Json };
+  if (!navigator.onLine) return { queued: true, data: null as Json };
   try {
     const data = await executeMutation(item);
     writeQueue(readQueue().filter((entry) => entry.id !== item.id));
-    return { queued: false, demo: false, data };
+    return { queued: false, data };
   } catch (error) {
     if (classifyFailure(error) !== "transient") {
       writeQueue(readQueue().filter((entry) => entry.id !== item.id));
       throw error;
     }
     writeQueue(readQueue().map((entry) => entry.id === item.id ? afterFailure(item, error) : entry));
-    return { queued: true, demo: false, data: null as Json };
+    return { queued: true, data: null as Json };
   }
 }
 
@@ -176,7 +174,7 @@ export async function flushPlatformQueue() {
   return flushing;
 }
 async function flush() {
-  if (isDemoMode() || !activeScope || !navigator.onLine) return { synced: 0, pending: getPendingPlatformMutations() };
+  if (!activeScope || !navigator.onLine) return { synced: 0, pending: getPendingPlatformMutations() };
   const scope = { ...activeScope };
   const { data: { session } } = await createClient().auth.getSession();
   if (!session || session.user.id !== scope.userId) return { synced: 0, pending: 0 };

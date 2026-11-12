@@ -38,11 +38,17 @@ test('AI validates response structure and never accepts invented source IDs', ()
 const compiled = ts.transpileModule(readFileSync(new URL('../../src/app/api/ai/route.ts', import.meta.url),'utf8'), {
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022},
 }).outputText;
+const ok = { data: true, error: null };
+const fakeSupabase = {
+  auth: { getUser: async () => ({ data: { user: { id: 'unit-user' } } }) },
+  rpc: async () => ok,
+  from: () => ({ insert: async () => ok, select: () => ({ order: () => ({ limit: async () => ({ data: [], error: null }) }) }) }),
+};
 async function callRoute(fetchImplementation, body = valid) {
   const routeModule = {exports:{}};
   const mocks = {
-    '@/lib/supabase/server':{},
-    '@/lib/supabase/config':{isSupabaseConfigured:()=>false,isDemoMode:()=>true},
+    '@/lib/supabase/server':{createClient:async()=>fakeSupabase},
+    '@/lib/supabase/config':{isSupabaseConfigured:()=>true},
     '@/features/ai/validation':validation,
   };
   new Function('require','module','exports','fetch',compiled)(name=>mocks[name]??require(name),routeModule,routeModule.exports,fetchImplementation);

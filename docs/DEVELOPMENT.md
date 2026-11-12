@@ -5,7 +5,6 @@
 ```text
 src/app/                 Web-маршруты Next.js App Router
 src/components/          переиспользуемые React-компоненты
-src/demo/                fixtures только явного демонстрационного режима
 src/features/            доменные модули и общая логика синхронизации
 src/lib/supabase/        Supabase client и repository
 src/stores/appStore.ts   Zustand: auth и доменное состояние Web

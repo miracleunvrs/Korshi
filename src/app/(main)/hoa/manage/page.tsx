@@ -24,7 +24,7 @@ export default function HoaManagePage() {
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [targetAmount, setTargetAmount] = useState("1000000");
+  const [targetAmount, setTargetAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [formError, setFormError] = useState("");
@@ -37,6 +37,11 @@ export default function HoaManagePage() {
       setFormError("Ссылка для перевода должна начинаться с https://");
       return;
     }
+    const amount = parseFloat(targetAmount);
+    if (!(amount > 0)) {
+      setFormError("Укажите цель сбора в тенге");
+      return;
+    }
 
     setLoading(true);
     setFormError("");
@@ -45,7 +50,7 @@ export default function HoaManagePage() {
       await createFundraiser({
         title: title.trim(),
         content: content.trim(),
-        targetAmount: parseFloat(targetAmount) || 1000000,
+        targetAmount: amount,
         currency: "₸",
         paymentUrl: link || undefined,
         endsAt: endsOn ? new Date(`${endsOn}T23:59:59`).toISOString() : undefined,

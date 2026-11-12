@@ -8,7 +8,7 @@ if (!command) throw new Error('Usage: node scripts/with-e2e-env.mjs <command> [a
 const child = spawn(command, args, {
   stdio: 'inherit',
   env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: status.API_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY: status.ANON_KEY,
-    SUPABASE_SERVICE_ROLE_KEY: status.SERVICE_ROLE_KEY, NEXT_PUBLIC_DEMO_MODE: 'false',
+    SUPABASE_SERVICE_ROLE_KEY: status.SERVICE_ROLE_KEY,
     NEXT_PUBLIC_APP_URL: 'http://127.0.0.1:3100', PLAYWRIGHT_TEST_BASE_URL: 'http://127.0.0.1:3100',
     NEXT_DIST_DIR: '.next-e2e', E2E_LOCAL: 'true', OPENAI_API_KEY: '', OPENAI_MODEL: '' },
 });

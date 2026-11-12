@@ -46,7 +46,7 @@ export default function VerifyResidentPage() {
   };
   const latestRequest = verificationRequests.find((request) => request.userId === currentUser.id);
   const [building, setBuilding] = useState(currentUser.buildingNumber);
-  const [entrance, setEntrance] = useState(String(currentUser.entranceNumber || 1));
+  const [entrance, setEntrance] = useState(currentUser.entranceNumber ? String(currentUser.entranceNumber) : "");
   const [apartment, setApartment] = useState(currentUser.apartmentNumber);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitted, setSubmitted] = useState(false);

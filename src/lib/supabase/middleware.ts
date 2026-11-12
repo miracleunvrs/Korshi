@@ -1,12 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database.types";
-import { isDemoMode, isSupabaseConfigured } from "@/lib/supabase/config";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  if (isDemoMode()) return supabaseResponse;
   if (!isSupabaseConfigured()) {
     if (!["/", "/login"].includes(request.nextUrl.pathname) && !request.nextUrl.pathname.startsWith("/auth")) {
       return NextResponse.redirect(new URL("/login?error=configuration", request.url));

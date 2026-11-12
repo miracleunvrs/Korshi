@@ -13,12 +13,11 @@ const compiled = ts.transpileModule(source, {
 function loadStore(repository, role = 'hoa_official') {
   const storeModule = { exports: {} };
   const mocks = {
-    '@/demo/initialState': { appFixturesInitial: () => ({
+    '@/stores/initialState': { emptyAppState: () => ({
       posts: [], currentUser: { id: 'user', role, verified: true },
     }) },
-    '@/demo/accounts': { DEFAULT_ACCOUNTS: [] },
     '@/lib/supabase/client': {},
-    '@/lib/supabase/config': { isSupabaseConfigured: () => true, isDemoMode: () => false },
+    '@/lib/supabase/config': { isSupabaseConfigured: () => true },
     '@/lib/appConfig': { complexName: (value) => value || 'Солнечный' },
     '@/features/chats/history': { mergeChatMessages: (older, latest) => [...older, ...latest] },
     '@/lib/supabase/repository': repository,

@@ -1,5 +1,4 @@
-import { appFixturesInitial } from "@/demo/initialState";
-import { DEFAULT_ACCOUNTS } from "@/demo/accounts";
+import { emptyAppState } from "@/stores/initialState";
 import type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, ResidentVehicle, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
 export type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, ResidentVehicle, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
 import { create } from "zustand";
@@ -7,7 +6,7 @@ import { persist } from "zustand/middleware";
 import type { PostWithAuthor, UserRole } from "@/types";
 import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
-import { getAuthCallbackUrl, isSupabaseConfigured, isDemoMode } from "@/lib/supabase/config";
+import { getAuthCallbackUrl, isSupabaseConfigured } from "@/lib/supabase/config";
 import { complexName } from "@/lib/appConfig";
 import { mergeChatMessages } from "@/features/chats/history";
 import type { User } from "@supabase/supabase-js";
@@ -78,7 +77,7 @@ function accountFromAuthMetadata(user: User): UserAccount {
     complexId: String(metadata.complex_id || "") || undefined,
     complexName: String(metadata.complex_name || "") || undefined,
     complexAddress: String(metadata.complex_address || "") || undefined,
-    entranceNumber: Number(metadata.entrance_number) || 1,
+    entranceNumber: Number(metadata.entrance_number) || 0,
     apartmentNumber: String(metadata.apartment_number || ""),
     verified: false,
     avatarUrl: String(metadata.avatar_url || ""),
@@ -116,7 +115,7 @@ async function loadAccount(user: User): Promise<UserAccount> {
       .maybeSingle();
     const complexData = complexResult.data as { name: string; address: string; city: string } | null;
     if (complexData) {
-      currentComplexName = complexData.name;
+      currentComplexName = complexName(complexData.name);
       currentComplexAddress = [complexData.city, complexData.address].filter(Boolean).join(", ");
     }
   }
@@ -202,19 +201,17 @@ function mergeAccount(users: UserAccount[], account: UserAccount) {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      ...appFixturesInitial(),
+      ...emptyAppState(),
 
-      isLoggedIn: isDemoMode(),
+      isLoggedIn: false,
       isAuthLoading: isSupabaseConfigured(),
       supabaseUserId: null,
       backendError: null,
 
 
       markNotificationRead: async (notificationId) => {
-        if (isSupabaseConfigured()) {
-          const { error } = await (createClient() as any).from("notifications").update({ is_read: true }).eq("id", notificationId);
-          if (error) throw error;
-        }
+        const { error } = await (createClient() as any).from("notifications").update({ is_read: true }).eq("id", notificationId);
+        if (error) throw error;
         set((state) => ({
           notifications: state.notifications.map((notification) =>
             notification.id === notificationId ? { ...notification, isRead: true } : notification
@@ -307,13 +304,13 @@ export const useAppStore = create<AppState>()(
 
           if (!data.user) {
             hydrateRequest += 1;
-            set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+            set({ ...emptyAppState(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
             return;
           }
 
           if (!data.user.email_confirmed_at) {
             await supabase.auth.signOut();
-            set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+            set({ ...emptyAppState(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
             return;
           }
 
@@ -326,79 +323,71 @@ export const useAppStore = create<AppState>()(
             isAuthLoading: false,
           }));
         } catch (error) {
-          set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
+          set({ ...emptyAppState(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
           throw error;
         }
       },
 
       registerUser: async (data) => {
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          const { data: authData, error } = await supabase.auth.signUp({
-            email: data.email.trim().toLowerCase(),
-            password: data.password,
-            options: {
-              emailRedirectTo: getAuthCallbackUrl(),
-              data: {
-                full_name: data.fullName,
-                phone: data.phone,
-                role: data.role || "resident",
-                building_number: data.buildingNumber,
-                entrance_number: data.entranceNumber,
-                apartment_number: data.apartmentNumber,
-              },
+        const supabase = createClient();
+        const { data: authData, error } = await supabase.auth.signUp({
+          email: data.email.trim().toLowerCase(),
+          password: data.password,
+          options: {
+            emailRedirectTo: getAuthCallbackUrl(),
+            data: {
+              full_name: data.fullName,
+              phone: data.phone,
+              role: data.role || "resident",
+              building_number: data.buildingNumber,
+              entrance_number: data.entranceNumber,
+              apartment_number: data.apartmentNumber,
             },
-          });
+          },
+        });
 
-          if (error) throw error;
-          if (!authData.user) throw new Error("Supabase не вернул созданного пользователя");
+        if (error) throw error;
+        if (!authData.user) throw new Error("Supabase не вернул созданного пользователя");
 
-          const account = authData.session && authData.user.email_confirmed_at
-            ? await loadAccount(authData.user)
-            : accountFromAuthMetadata(authData.user);
-          const requiresEmailConfirmation = !authData.session || !authData.user.email_confirmed_at;
-          if (requiresEmailConfirmation && authData.session) {
-            await supabase.auth.signOut();
-          }
-
-          set((current) => ({
-            registeredUsers: mergeAccount(current.registeredUsers, account),
-            currentUser: account,
-            isLoggedIn: !requiresEmailConfirmation,
-            supabaseUserId: requiresEmailConfirmation ? null : authData.user!.id,
-          }));
-
-          return { account, requiresEmailConfirmation };
+        const account = authData.session && authData.user.email_confirmed_at
+          ? await loadAccount(authData.user)
+          : accountFromAuthMetadata(authData.user);
+        const requiresEmailConfirmation = !authData.session || !authData.user.email_confirmed_at;
+        if (requiresEmailConfirmation && authData.session) {
+          await supabase.auth.signOut();
         }
 
-        throw new Error("Supabase не настроен. Укажите переменные окружения для реальной регистрации.");
+        set((current) => ({
+          registeredUsers: mergeAccount(current.registeredUsers, account),
+          currentUser: account,
+          isLoggedIn: !requiresEmailConfirmation,
+          supabaseUserId: requiresEmailConfirmation ? null : authData.user!.id,
+        }));
+
+        return { account, requiresEmailConfirmation };
       },
 
       loginUser: async (email, password) => {
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: email.trim().toLowerCase(),
-            password,
-          });
-          if (error) throw error;
-          if (!data.user) throw new Error("Supabase не вернул пользователя");
-          if (!data.user.email_confirmed_at) {
-            await supabase.auth.signOut();
-            throw new Error("Подтвердите email по ссылке из письма, затем войдите снова");
-          }
-
-          const account = await loadAccount(data.user);
-          set((current) => ({
-            registeredUsers: mergeAccount(current.registeredUsers, account),
-            currentUser: account,
-            isLoggedIn: true,
-            supabaseUserId: data.user!.id,
-          }));
-          return account;
+        const supabase = createClient();
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        });
+        if (error) throw error;
+        if (!data.user) throw new Error("Supabase не вернул пользователя");
+        if (!data.user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          throw new Error("Подтвердите email по ссылке из письма, затем войдите снова");
         }
 
-        throw new Error("Supabase не настроен. Укажите переменные окружения для реального входа.");
+        const account = await loadAccount(data.user);
+        set((current) => ({
+          registeredUsers: mergeAccount(current.registeredUsers, account),
+          currentUser: account,
+          isLoggedIn: true,
+          supabaseUserId: data.user!.id,
+        }));
+        return account;
       },
 
       resetPassword: async (email) => {
@@ -410,17 +399,14 @@ export const useAppStore = create<AppState>()(
       },
 
       logoutUser: async () => {
-        if (isSupabaseConfigured()) {
-          const { error } = await createClient().auth.signOut();
-          if (error) throw error;
-        }
+        const { error } = await createClient().auth.signOut();
+        if (error) throw error;
 
         // С реальным бэкендом в памяти не должно остаться данных вышедшего пользователя,
         // а загрузка, начатая до выхода, не должна их вернуть.
         hydrateRequest += 1;
         set({
-          ...(isSupabaseConfigured() ? appFixturesInitial() : {}),
-          currentUser: DEFAULT_ACCOUNTS[0],
+          ...emptyAppState(),
           isLoggedIn: false,
           supabaseUserId: null,
           backendError: null,
@@ -458,36 +444,10 @@ export const useAppStore = create<AppState>()(
       },
 
       createServiceRequest: async (data, files = []) => {
-        const state = get();
         const request = await persistServiceRequest(data, files);
-        const now = new Date();
-        const localRequest: ServiceRequestItem = request || {
-          id: `service-request-${Date.now()}`,
-          userId: state.currentUser.id,
-          complexId: state.currentUser.complexId || "complex-1",
-          ...data,
-          status: "submitted",
-          attachments: files.map((file, index) => ({
-            id: `local-attachment-${Date.now()}-${index}`,
-            url: URL.createObjectURL(file),
-            name: file.name,
-            mimeType: file.type,
-            sizeBytes: file.size,
-            kind: "evidence",
-          })),
-          events: [{
-            id: `local-event-${Date.now()}`,
-            kind: "created",
-            actorName: state.currentUser.fullName,
-            actorRole: state.currentUser.role,
-            message: data.description,
-            createdAt: now.toLocaleString("ru-RU"),
-          }],
-          createdAt: now.toLocaleString("ru-RU"),
-          updatedAt: now.toLocaleString("ru-RU"),
-        };
+        if (!request) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((current) => ({
-          serviceRequests: [localRequest, ...current.serviceRequests],
+          serviceRequests: [request, ...current.serviceRequests],
           backendError: null,
         }));
       },
@@ -584,21 +544,8 @@ export const useAppStore = create<AppState>()(
       },
 
       addHouseDocument: async (data, file) => {
-        const state = get();
-        const remote = await persistHouseDocument(data, file);
-        const document: HouseDocument = remote || {
-          id: `document-${Date.now()}`,
-          complexId: state.currentUser.complexId || "complex-1",
-          ...data,
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-          url: URL.createObjectURL(file),
-          acknowledged: false,
-          status: "active",
-          publishedBy: state.currentUser.fullName,
-          publishedAt: new Date().toLocaleString("ru-RU"),
-        };
+        const document = await persistHouseDocument(data, file);
+        if (!document) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((current) => ({ documents: [document, ...current.documents] }));
       },
 
@@ -637,8 +584,8 @@ export const useAppStore = create<AppState>()(
       },
 
       addFinanceTransaction: async (data) => {
-        const remote = await recordFinanceTransaction(data);
-        const transaction: FinanceTransaction = remote || { ...data, id: `finance-${Date.now()}` };
+        const transaction = await recordFinanceTransaction(data);
+        if (!transaction) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((state) => ({
           finance: {
             ...state.finance,
@@ -651,25 +598,23 @@ export const useAppStore = create<AppState>()(
       },
 
       createAmenityBooking: async (resourceId, startsAt, endsAt) => {
-        const remote = await persistAmenityBooking(resourceId, startsAt, endsAt);
-        const booking: AmenityBooking = remote || { id: `booking-${Date.now()}`, resourceId, startsAt, endsAt, status: "confirmed" };
+        const booking = await persistAmenityBooking(resourceId, startsAt, endsAt);
+        if (!booking) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((state) => ({ amenityBookings: [booking, ...state.amenityBookings] }));
       },
 
       addResidentVehicle: async (plate, label) => {
-        const remote = await persistResidentVehicle(plate, label);
-        const vehicle: ResidentVehicle = remote || { id: `vehicle-${Date.now()}`, plate, label };
+        const vehicle = await persistResidentVehicle(plate, label);
+        if (!vehicle) throw new Error("Сервер не подтвердил сохранение. Обновите страницу и попробуйте снова.");
         set((state) => ({ residentVehicles: [vehicle, ...state.residentVehicles] }));
       },
 
       markAllNotificationsRead: async () => {
-        if (isSupabaseConfigured()) {
-          const { error } = await (createClient() as any)
-            .from("notifications")
-            .update({ is_read: true })
-            .eq("is_read", false);
-          if (error) throw error;
-        }
+        const { error } = await (createClient() as any)
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("is_read", false);
+        if (error) throw error;
         set((state) => ({
           notifications: state.notifications.map((notification) => ({ ...notification, isRead: true })),
         }));
@@ -733,7 +678,7 @@ export const useAppStore = create<AppState>()(
 
       addPost: (post) =>
         set((state) => {
-          const savedPost = isSupabaseConfigured() && !isUuid(post.id)
+          const savedPost = !isUuid(post.id)
             ? { ...post, id: crypto.randomUUID() }
             : post;
           void persistPost(savedPost).catch((error) => {
@@ -852,7 +797,7 @@ export const useAppStore = create<AppState>()(
       addComment: (postId, commentText) =>
         set((state) => {
           const currentList = state.postComments[postId] || [];
-          const commentId = isSupabaseConfigured() ? crypto.randomUUID() : `c-${Date.now()}`;
+          const commentId = crypto.randomUUID();
           void persistComment(postId, commentText, commentId).catch((error) => {
             // Убираем только несохранённый комментарий, не затирая параллельные обновления.
             set((current) => ({
@@ -923,7 +868,7 @@ export const useAppStore = create<AppState>()(
           const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           const newMsg: MessageItem = {
             createdAt: now.toISOString(),
-            id: isSupabaseConfigured() ? crypto.randomUUID() : `msg-${Date.now()}`,
+            id: crypto.randomUUID(),
             chatId,
             senderId: state.currentUser.id,
             senderName: state.currentUser.fullName,
@@ -996,51 +941,14 @@ export const useAppStore = create<AppState>()(
 
       createDirectChatWith: async (authorId, authorName) => {
         const state = get();
-        if (isSupabaseConfigured()) {
-          const chatId = await createDirectChatRemote(authorId);
-          await get().hydrateDomainData();
-          return chatId;
-        }
-
-        const existingChat = state.chats.find((c) => c.name.includes(authorName));
-        if (existingChat) return existingChat.id;
-
-        const newChatId = `chat-${Date.now()}`;
-        const newChat: ChatItem = {
-          id: newChatId,
-          name: `Личные: ${authorName}`,
-          type: "direct",
-          lastMessage: "Чат начат",
-          lastMessageTime: "Только что",
-          unreadCount: 0,
-          avatarColor: "bg-green-600",
-          icon: "💬",
-        };
-
-        set({
-          chats: [newChat, ...state.chats],
-          messages: {
-            ...state.messages,
-            [newChatId]: [
-              {
-                id: `msg-welcome-${Date.now()}`,
-                chatId: newChatId,
-                senderId: state.currentUser.id,
-                senderName: state.currentUser.fullName,
-                isMe: true,
-                text: `Здравствуйте, ${authorName}! Пишу по вашему объявлению.`,
-                time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              },
-            ],
-          },
-        });
-
-        return newChatId;
+        const chatId = await createDirectChatRemote(authorId);
+        await get().hydrateDomainData();
+        return chatId;
       },
 
       addClassified: (item, details = {}) =>
         set((state) => {
-          const saved = isSupabaseConfigured() && !isUuid(item.id) ? { ...item, id: crypto.randomUUID() } : item;
+          const saved = !isUuid(item.id) ? { ...item, id: crypto.randomUUID() } : item;
           void persistClassified({
             id: saved.id,
             title: saved.title,
@@ -1073,33 +981,20 @@ export const useAppStore = create<AppState>()(
       donateToFundraiser: async (fundraiserId, amount, options = {}) => {
         await recordFundraiserPayment(fundraiserId, amount, options.comment, options.anonymous);
         // С бэкендом сумма попадёт в сбор только после того, как ОСИ подтвердит поступление.
-        if (isSupabaseConfigured()) return;
-        set((state) => ({
-          posts: state.posts.map((p) => {
-            if (p.fundraiser?.id !== fundraiserId) return p;
-            return {
-              ...p,
-              fundraiser: {
-                ...p.fundraiser,
-                current_amount: p.fundraiser.current_amount + amount,
-              },
-            };
-          }),
-        }));
       },
 
       createFundraiser: async (data) => {
           const state = get();
-          if (isSupabaseConfigured() && !["hoa_official", "admin"].includes(state.currentUser.role)) {
+          if (!["hoa_official", "admin"].includes(state.currentUser.role)) {
             const error = new Error("Только представитель ОСИ может запускать сборы");
             set({ backendError: error.message });
             throw error;
           }
-          const newPostId = isSupabaseConfigured() ? crypto.randomUUID() : `post-fund-${Date.now()}`;
+          const newPostId = crypto.randomUUID();
           const newPost: PostWithAuthor = {
             id: newPostId,
             author_id: state.currentUser.id,
-            complex_id: "complex-1",
+            complex_id: state.currentUser.complexId ?? "",
             building_id: null,
             entrance_id: null,
             type: "fundraiser",
@@ -1121,7 +1016,7 @@ export const useAppStore = create<AppState>()(
               verified: true,
             },
             fundraiser: {
-              id: isSupabaseConfigured() ? crypto.randomUUID() : `fund-${Date.now()}`,
+              id: crypto.randomUUID(),
               post_id: newPostId,
               initiative_id: null,
               target_amount: data.targetAmount,
@@ -1156,12 +1051,11 @@ export const useAppStore = create<AppState>()(
       },
     }),
     {
-      name: isDemoMode() ? "korshi-demo-app-v1" : "korshi-app-v5",
-      partialize: (state) => isDemoMode() ? Object.fromEntries(Object.keys(appFixturesInitial()).map((key) => [key, state[key as keyof AppState]])) : {},
-      merge: (persistedState, currentState) => ({
+      name: "korshi-app-v5",
+      partialize: () => ({}),
+      merge: (_persistedState, currentState) => ({
         ...currentState,
-        ...(isDemoMode() ? persistedState as Partial<AppState> : {}),
-        isLoggedIn: isDemoMode(),
+        isLoggedIn: false,
         isAuthLoading: isSupabaseConfigured(),
         supabaseUserId: null,
       }),

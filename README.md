@@ -43,7 +43,7 @@ pnpm dev:local
 
 Откройте `http://127.0.0.1:3100`. Команда подставляет адрес и публичный ключ только локального Supabase. Учебные аккаунты описаны в `supabase/seeds/diploma.sql`.
 
-Для подключённого окружения укажите URL проекта и anon key Supabase в `.env.local`. `SUPABASE_SERVICE_ROLE_KEY` нельзя использовать в браузере и нельзя коммитить. Демо-режим включается только явно через `NEXT_PUBLIC_DEMO_MODE=true` и не смешивается с Supabase-конфигурацией.
+Для подключённого окружения укажите URL проекта и anon key Supabase в `.env.local`. `SUPABASE_SERVICE_ROLE_KEY` нельзя использовать в браузере и нельзя коммитить.
 
 ## Проверки
 

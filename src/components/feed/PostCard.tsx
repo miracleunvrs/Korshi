@@ -182,9 +182,7 @@ export default function PostCard({ post, onVote, onSupportInitiative, onLike, on
             </span>
           </div>
 
-          <p className="text-xs text-gray-600">
-            {post.initiative?.goal || "Предложение по улучшению нашего двора и подъездов."}
-          </p>
+          {post.initiative?.goal && <p className="text-xs text-gray-600">{post.initiative.goal}</p>}
 
           <div className="grid grid-cols-4 gap-1" aria-label="Этапы инициативы">
             {["Предложено", "Обсуждение", "Решение", "Реализация"].map((label, index) => {

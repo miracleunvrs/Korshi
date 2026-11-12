@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
-import { APP_CONFIG, complexTitle } from "@/lib/appConfig";
+import { APP_CONFIG } from "@/lib/appConfig";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { loadSignupBuildings, type SignupBuilding } from "@/lib/supabase/repository";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,14 +26,27 @@ export default function LoginPage() {
   const [regEmail, setRegEmail] = useState("");
   const [regPhone, setRegPhone] = useState("");
   const [regPassword, setRegPassword] = useState("");
-  const [regBuilding, setRegBuilding] = useState("1");
-  const [regEntrance, setRegEntrance] = useState(1);
+  const [regBuilding, setRegBuilding] = useState("");
   const [regApartment, setRegApartment] = useState("");
+  const [buildings, setBuildings] = useState<SignupBuilding[]>([]);
   const [regRole, setRegRole] = useState<"resident" | "service_provider">("resident");
   const [regError, setRegError] = useState("");
   const [regLoading, setRegLoading] = useState(false);
   const [regSuccess, setRegSuccess] = useState(false);
   const [regNeedsConfirmation, setRegNeedsConfirmation] = useState(false);
+
+  // Дома и квартиры берутся из базы: подъезд определяется по номеру квартиры,
+  // иначе житель легко указывает не тот подъезд и не привязывается к квартире.
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    void loadSignupBuildings().then((list) => {
+      setBuildings(list);
+      if (list[0]) setRegBuilding(list[0].number);
+    }).catch(() => setRegError("Не удалось загрузить список домов. Обновите страницу."));
+  }, []);
+
+  const selectedBuilding = buildings.find((building) => building.number === regBuilding);
+  const knownEntrance = selectedBuilding?.entranceByApartment[regApartment.trim()];
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +78,10 @@ export default function LoginPage() {
       setRegError("Пароль должен содержать минимум 6 символов");
       return;
     }
+    if (!knownEntrance) {
+      setRegError(`В доме ${regBuilding} нет квартиры ${regApartment.trim()}`);
+      return;
+    }
     setRegError("");
     setRegLoading(true);
 
@@ -73,7 +92,7 @@ export default function LoginPage() {
         email: regEmail.trim(),
         password: regPassword,
         buildingNumber: regBuilding,
-        entranceNumber: Number(regEntrance) || 1,
+        entranceNumber: knownEntrance,
         apartmentNumber: regApartment.trim(),
         role: regRole,
       });
@@ -119,7 +138,7 @@ export default function LoginPage() {
             <h1 className="text-2xl font-black tracking-tight text-stone-950">{APP_CONFIG.brandName}</h1>
             <ShieldCheck className="h-5 w-5 text-green-800" />
           </div>
-          <p className="text-sm font-semibold text-stone-500">{complexTitle()} · всё важное о вашем доме</p>
+          <p className="text-sm font-semibold text-stone-500">Всё важное о вашем доме</p>
         </div>
 
         {/* Табы */}
@@ -221,23 +240,17 @@ export default function LoginPage() {
                   onChange={(e) => setRegBuilding(e.target.value)}
                   className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="1">Дом 1</option>
-                  <option value="2">Дом 2</option>
-                  <option value="3">Дом 3</option>
+                  {buildings.map((building) => (
+                    <option key={building.number} value={building.number}>Дом {building.number}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">Подъезд</label>
-                <input
-                  type="number"
-                  value={regEntrance}
-                  onChange={(e) => setRegEntrance(Number(e.target.value))}
-                  min={1}
-                  max={6}
-                  className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                />
+                <p className="w-full px-3 py-2.5 bg-gray-100 border border-gray-200 rounded-xl text-xs font-semibold text-gray-600">
+                  {knownEntrance ?? "—"}
+                </p>
               </div>
 
               <div>

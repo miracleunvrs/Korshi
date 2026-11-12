@@ -1,6 +1,7 @@
-import { operationsFixturesInitial } from "@/demo/initialState";
+import { emptyOperationsState } from "@/stores/initialState";
 import { localDateTimeToIso } from "@/lib/datetime";
-import { isDemoMode } from "@/lib/supabase/config";
+import { complexName } from "@/lib/appConfig";
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { clearPlatformScope, loadPlatformSnapshot, quarantineStaleScopeActions, syncPlatformMutation } from "@/lib/supabase/platformRepository";
@@ -136,25 +137,25 @@ const dateLabel = (value: unknown) => value ? new Date(String(value)).toLocaleSt
 const related = <T,>(value: T | T[] | null | undefined) => Array.isArray(value) ? value[0] : value;
 
 export const useOperationsStore = create<OperationsState>()(persist((set, get) => ({
-      ...operationsFixturesInitial(),
+      ...emptyOperationsState(),
 
   syncMessage: "",
 
   hydrateFromBackend: async () => {
     let snapshot;
     try { snapshot = await loadPlatformSnapshot(); } catch (error) {
-      set({ ...operationsFixturesInitial(), syncMessage: error instanceof Error ? error.message : "Не удалось загрузить данные" });
+      set({ ...emptyOperationsState(), syncMessage: error instanceof Error ? error.message : "Не удалось загрузить данные" });
       return;
     }
     if (!snapshot) return;
-    const next: Partial<OperationsState> = { ...operationsFixturesInitial(), syncMessage: "" };
+    const next: Partial<OperationsState> = { ...emptyOperationsState(), syncMessage: "" };
 
     if (snapshot.memberships) next.memberships = snapshot.memberships.map((row: any) => {
       const complex = related(row.complex) as any;
       const apartment = related(row.apartment) as any;
       const entrance = related(apartment?.entrance) as any;
       const building = related(entrance?.building) as any;
-      return { id: row.id, complexName: complex?.name || "Жилой комплекс", address: complex?.address || "", building: String(building?.number || "—"), entrance: String(entrance?.number || "—"), apartment: String(apartment?.number || "—"), role: row.role as MembershipRole, isActive: Boolean(row.is_active) };
+      return { id: row.id, complexName: complexName(complex?.name), address: complex?.address || "", building: String(building?.number || "—"), entrance: String(entrance?.number || "—"), apartment: String(apartment?.number || "—"), role: row.role as MembershipRole, isActive: Boolean(row.is_active) };
     });
     if (snapshot.passes) next.passes = snapshot.passes.map((row: any) => ({ id: row.id, guestName: row.guest_name, kind: row.kind, code: row.access_code, vehiclePlate: row.vehicle_plate || undefined, validUntil: dateLabel(row.valid_until), status: row.status, arrivals: Number(row.used_count || 0) }));
     if (snapshot.accessEvents) next.accessEvents = snapshot.accessEvents.map((row: any) => ({ id: row.id, subject: row.subject, direction: row.direction, checkpoint: row.checkpoint, occurredAt: dateLabel(row.occurred_at), result: row.result }));
@@ -275,7 +276,7 @@ set({ complexSettings: settings });
 await confirmedMutation({ operation: "insert", table: "sos_incidents", payload: { location, status: "active" } });
 set({ syncMessage: "SOS зарегистрирован на сервере. Получение охраной не подтверждено; при опасности звоните 112." });
 },
-}), { name: isDemoMode() ? "korshi-demo-operations-v1" : "korshi-operations-v2", partialize: (state) => isDemoMode() ? state : {}, merge: (persisted, current) => isDemoMode() ? { ...current, ...(persisted as Partial<OperationsState>) } : current }));
+}), { name: "korshi-operations-v2", partialize: () => ({}), merge: (_persisted, current) => current }));
 
 async function confirmedMutation(mutation: Parameters<typeof syncPlatformMutation>[0]) {
   try {

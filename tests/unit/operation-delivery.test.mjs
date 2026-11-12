@@ -17,9 +17,10 @@ function load(path, mocks, globals = {}) {
 }
 function store(queued) {
   return load('../../src/stores/operationsStore.ts', {
-    '@/demo/initialState': { operationsFixturesInitial: () => ({ passes: [], parkingBookings: [], parkingSpots: [] }) },
-    '@/lib/supabase/config': { isDemoMode: () => false },
+    '@/stores/initialState': { emptyOperationsState: () => ({ passes: [], parkingBookings: [], parkingSpots: [] }) },
+    '@/lib/supabase/config': {},
     '@/lib/datetime': load('../../src/lib/datetime.ts', {}),
+    '@/lib/appConfig': load('../../src/lib/appConfig.ts', {}),
     'zustand/middleware': { persist: (initializer) => initializer },
     '@/lib/supabase/platformRepository': { syncPlatformMutation: async () => ({ queued, data: null }) },
     '@/stores/appStore': { useAppStore: { getState: () => ({}) } },
@@ -59,7 +60,7 @@ function repository(online, failure) {
   };
   const api = load('../../src/lib/supabase/platformRepository.ts', {
     '@/lib/supabase/client': { createClient: () => client },
-    '@/lib/supabase/config': { isDemoMode: () => false, requireBackend: () => {} },
+    '@/lib/supabase/config': { requireBackend: () => {} },
     '@/features/sync/queue': load('../../src/features/sync/queue.ts', {}),
   }, {
     navigator: { onLine: online },
@@ -104,9 +105,10 @@ test('quarantine without an established scope changes nothing', async () => {
 });
 function switchingStore(queued, hooks) {
   return load('../../src/stores/operationsStore.ts', {
-    '@/demo/initialState': { operationsFixturesInitial: () => ({ memberships: [{ id: 'a', isActive: true }, { id: 'b', isActive: false }], syncMessage: '' }) },
-    '@/lib/supabase/config': { isDemoMode: () => false },
+    '@/stores/initialState': { emptyOperationsState: () => ({ memberships: [{ id: 'a', isActive: true }, { id: 'b', isActive: false }], syncMessage: '' }) },
+    '@/lib/supabase/config': {},
     '@/lib/datetime': load('../../src/lib/datetime.ts', {}),
+    '@/lib/appConfig': load('../../src/lib/appConfig.ts', {}),
     'zustand/middleware': { persist: (initializer) => initializer },
     '@/lib/supabase/platformRepository': {
       syncPlatformMutation: async () => { hooks.mutated++; return { queued, data: null }; },

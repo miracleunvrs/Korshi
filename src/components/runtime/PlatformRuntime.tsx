@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { flushPlatformQueue, getPendingPlatformMutations, clearPlatformScope } from "@/lib/supabase/platformRepository";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { useAppStore } from "@/stores/appStore";
-import { operationsFixturesInitial } from "@/demo/initialState";
+import { emptyOperationsState } from "@/stores/initialState";
 
 export default function PlatformRuntime() {
   const userId = useAppStore((state) => state.supabaseUserId);
@@ -18,7 +18,7 @@ export default function PlatformRuntime() {
   useEffect(() => {
     let active = true;
     clearPlatformScope();
-    useOperationsStore.setState({ ...operationsFixturesInitial(), syncMessage: "" });
+    useOperationsStore.setState({ ...emptyOperationsState(), syncMessage: "" });
     const refresh = () => {
       if (!active) return;
       setOffline(!navigator.onLine);
