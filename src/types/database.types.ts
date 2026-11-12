@@ -488,6 +488,13 @@ export type Database = {
             foreignKeyName: "apartment_invites_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "apartment_invites_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -905,6 +912,13 @@ export type Database = {
             foreignKeyName: "complex_memberships_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "complex_memberships_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -1280,6 +1294,13 @@ export type Database = {
           token_hash?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "family_invitations_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
           {
             foreignKeyName: "family_invitations_apartment_id_fkey"
             columns: ["apartment_id"]
@@ -2464,6 +2485,13 @@ export type Database = {
             foreignKeyName: "official_vote_ballots_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "official_vote_ballots_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -2803,6 +2831,13 @@ export type Database = {
             foreignKeyName: "parking_spots_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "parking_spots_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -3135,6 +3170,13 @@ export type Database = {
             foreignKeyName: "profiles_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "profiles_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -3253,6 +3295,13 @@ export type Database = {
             foreignKeyName: "resident_invoices_apartment_id_fkey"
             columns: ["apartment_id"]
             isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
+          {
+            foreignKeyName: "resident_invoices_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
             referencedRelation: "apartments"
             referencedColumns: ["id"]
           },
@@ -3310,6 +3359,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "resident_payments_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
+            referencedRelation: "apartment_residents"
+            referencedColumns: ["apartment_id"]
+          },
           {
             foreignKeyName: "resident_payments_apartment_id_fkey"
             columns: ["apartment_id"]
@@ -4116,7 +4172,37 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      apartment_residents: {
+        Row: {
+          apartment_id: string | null
+          apartment_number: string | null
+          building_number: string | null
+          complex_id: string | null
+          entrance_number: number | null
+          floor: number | null
+          resident_id: string | null
+          resident_name: string | null
+          resident_phone: string | null
+          resident_role: string | null
+          resident_verified: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "buildings_complex_id_fkey"
+            columns: ["complex_id"]
+            isOneToOne: false
+            referencedRelation: "complexes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "complex_memberships_user_id_fkey"
+            columns: ["resident_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       add_service_request_comment: {
