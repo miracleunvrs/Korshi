@@ -135,15 +135,8 @@ complexes → buildings → entrances → apartments → profiles
 - type: text | image | document | system
 - is_deleted, created_at, updated_at
 
-#### service_providers
-- id, profile_id (UNIQUE), description, categories[], service_areas[]
-- rating, reviews_count, is_verified, recommended_by
-
 #### notifications
 - id, user_id, type, title, body, data jsonb, is_read
-
-#### moderation_logs
-- id, moderator_id, target_type, target_id, action, reason
 
 #### service_requests
 - id, created_by, complex_id, building_id?, entrance_id?
@@ -176,7 +169,7 @@ complexes → buildings → entrances → apartments → profiles
 - события и работы по дому
 - общие помещения и бронирования без пересечения интервалов
 
-#### visitor_passes / resident_vehicles
+#### access_passes / resident_vehicles
 - ограниченные по времени коды доступа для гостей, курьеров и автомобилей
 - автомобили жителей для интеграции со СКУД
 
@@ -196,7 +189,7 @@ complexes → buildings → entrances → apartments → profiles
 | official_votes | жители того же ЖК | hoa_official / admin; голос через RPC |
 | finance_* | жители того же ЖК | hoa_official / admin через RPC |
 | emergency_alerts | жители того же ЖК | hoa_official / admin через RPC |
-| amenity_bookings / visitor_passes / resident_vehicles | владелец и управление | владелец через проверяемые RPC/RLS |
+| amenity_bookings / access_passes / resident_vehicles | владелец и управление | владелец через проверяемые RPC/RLS |
 
 ## Маршруты
 

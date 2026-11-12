@@ -1038,41 +1038,6 @@ export type Database = {
         }
         Relationships: []
       }
-      document_chunks: {
-        Row: {
-          chunk_index: number
-          content: string
-          created_at: string
-          document_id: string
-          id: string
-          source_page: number | null
-        }
-        Insert: {
-          chunk_index: number
-          content: string
-          created_at?: string
-          document_id: string
-          id?: string
-          source_page?: number | null
-        }
-        Update: {
-          chunk_index?: number
-          content?: string
-          created_at?: string
-          document_id?: string
-          id?: string
-          source_page?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "document_chunks_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "house_documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       emergency_alert_acknowledgements: {
         Row: {
           alert_id: string
@@ -1682,55 +1647,6 @@ export type Database = {
           },
         ]
       }
-      house_document_folders: {
-        Row: {
-          complex_id: string
-          created_at: string
-          created_by: string
-          id: string
-          name: string
-          parent_id: string | null
-        }
-        Insert: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          name: string
-          parent_id?: string | null
-        }
-        Update: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          name?: string
-          parent_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "house_document_folders_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "house_document_folders_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "house_document_folders_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "house_document_folders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       house_documents: {
         Row: {
           building_id: string | null
@@ -1741,7 +1657,6 @@ export type Database = {
           entrance_id: string | null
           file_name: string
           file_path: string
-          folder_id: string | null
           id: string
           is_important: boolean
           mime_type: string
@@ -1765,7 +1680,6 @@ export type Database = {
           entrance_id?: string | null
           file_name: string
           file_path: string
-          folder_id?: string | null
           id?: string
           is_important?: boolean
           mime_type: string
@@ -1789,7 +1703,6 @@ export type Database = {
           entrance_id?: string | null
           file_name?: string
           file_path?: string
-          folder_id?: string | null
           id?: string
           is_important?: boolean
           mime_type?: string
@@ -1824,13 +1737,6 @@ export type Database = {
             columns: ["entrance_id"]
             isOneToOne: false
             referencedRelation: "entrances"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "house_documents_folder_id_fkey"
-            columns: ["folder_id"]
-            isOneToOne: false
-            referencedRelation: "house_document_folders"
             referencedColumns: ["id"]
           },
           {
@@ -1912,42 +1818,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      integration_webhook_events: {
-        Row: {
-          error_code: string | null
-          id: string
-          payload_hash: string
-          processed_at: string | null
-          provider: string
-          provider_event_id: string
-          received_at: string
-          signature_valid: boolean
-          status: string
-        }
-        Insert: {
-          error_code?: string | null
-          id?: string
-          payload_hash: string
-          processed_at?: string | null
-          provider: string
-          provider_event_id: string
-          received_at?: string
-          signature_valid: boolean
-          status?: string
-        }
-        Update: {
-          error_code?: string | null
-          id?: string
-          payload_hash?: string
-          processed_at?: string | null
-          provider?: string
-          provider_event_id?: string
-          received_at?: string
-          signature_valid?: boolean
-          status?: string
-        }
-        Relationships: []
       }
       marketplace_favorites: {
         Row: {
@@ -2147,44 +2017,6 @@ export type Database = {
           },
         ]
       }
-      moderation_logs: {
-        Row: {
-          action: Database["public"]["Enums"]["moderation_action"]
-          created_at: string
-          id: string
-          moderator_id: string
-          reason: string | null
-          target_id: string
-          target_type: Database["public"]["Enums"]["moderation_target"]
-        }
-        Insert: {
-          action: Database["public"]["Enums"]["moderation_action"]
-          created_at?: string
-          id?: string
-          moderator_id: string
-          reason?: string | null
-          target_id: string
-          target_type: Database["public"]["Enums"]["moderation_target"]
-        }
-        Update: {
-          action?: Database["public"]["Enums"]["moderation_action"]
-          created_at?: string
-          id?: string
-          moderator_id?: string
-          reason?: string | null
-          target_id?: string
-          target_type?: Database["public"]["Enums"]["moderation_target"]
-        }
-        Relationships: [
-          {
-            foreignKeyName: "moderation_logs_moderator_id_fkey"
-            columns: ["moderator_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       notification_broadcasts: {
         Row: {
           audience: Json
@@ -2233,73 +2065,6 @@ export type Database = {
           {
             foreignKeyName: "notification_broadcasts_created_by_fkey"
             columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notification_delivery_outbox: {
-        Row: {
-          attempts: number
-          channel: string
-          complex_id: string
-          created_at: string
-          id: string
-          last_error: string | null
-          notification_id: string | null
-          provider_message_id: string | null
-          scheduled_at: string
-          sent_at: string | null
-          status: string
-          user_id: string
-        }
-        Insert: {
-          attempts?: number
-          channel: string
-          complex_id: string
-          created_at?: string
-          id?: string
-          last_error?: string | null
-          notification_id?: string | null
-          provider_message_id?: string | null
-          scheduled_at?: string
-          sent_at?: string | null
-          status?: string
-          user_id: string
-        }
-        Update: {
-          attempts?: number
-          channel?: string
-          complex_id?: string
-          created_at?: string
-          id?: string
-          last_error?: string | null
-          notification_id?: string | null
-          provider_message_id?: string | null
-          scheduled_at?: string
-          sent_at?: string | null
-          status?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notification_delivery_outbox_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notification_delivery_outbox_notification_id_fkey"
-            columns: ["notification_id"]
-            isOneToOne: false
-            referencedRelation: "notifications"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notification_delivery_outbox_user_id_fkey"
-            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -2507,90 +2272,6 @@ export type Database = {
             columns: ["voter_id"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      official_vote_documents: {
-        Row: {
-          document_id: string
-          vote_id: string
-        }
-        Insert: {
-          document_id: string
-          vote_id: string
-        }
-        Update: {
-          document_id?: string
-          vote_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "official_vote_documents_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "house_documents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "official_vote_documents_vote_id_fkey"
-            columns: ["vote_id"]
-            isOneToOne: false
-            referencedRelation: "official_votes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      official_vote_protocols: {
-        Row: {
-          created_at: string
-          generated_by: string
-          id: string
-          pdf_url: string | null
-          sha256: string
-          signature_provider: string | null
-          signature_status: string
-          signed_at: string | null
-          snapshot: Json
-          vote_id: string
-        }
-        Insert: {
-          created_at?: string
-          generated_by?: string
-          id?: string
-          pdf_url?: string | null
-          sha256: string
-          signature_provider?: string | null
-          signature_status?: string
-          signed_at?: string | null
-          snapshot: Json
-          vote_id: string
-        }
-        Update: {
-          created_at?: string
-          generated_by?: string
-          id?: string
-          pdf_url?: string | null
-          sha256?: string
-          signature_provider?: string | null
-          signature_status?: string
-          signed_at?: string | null
-          snapshot?: Json
-          vote_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "official_vote_protocols_generated_by_fkey"
-            columns: ["generated_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "official_vote_protocols_vote_id_fkey"
-            columns: ["vote_id"]
-            isOneToOne: true
-            referencedRelation: "official_votes"
             referencedColumns: ["id"]
           },
         ]
@@ -2846,41 +2527,6 @@ export type Database = {
             columns: ["complex_id"]
             isOneToOne: false
             referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      payment_receipts: {
-        Row: {
-          created_at: string
-          fiscal_data: Json | null
-          id: string
-          payment_id: string
-          pdf_url: string | null
-          receipt_number: string
-        }
-        Insert: {
-          created_at?: string
-          fiscal_data?: Json | null
-          id?: string
-          payment_id: string
-          pdf_url?: string | null
-          receipt_number: string
-        }
-        Update: {
-          created_at?: string
-          fiscal_data?: Json | null
-          id?: string
-          payment_id?: string
-          pdf_url?: string | null
-          receipt_number?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_receipts_payment_id_fkey"
-            columns: ["payment_id"]
-            isOneToOne: true
-            referencedRelation: "resident_payments"
             referencedColumns: ["id"]
           },
         ]
@@ -3256,139 +2902,6 @@ export type Database = {
           },
         ]
       }
-      resident_invoices: {
-        Row: {
-          amount: number
-          apartment_id: string
-          complex_id: string
-          created_at: string
-          document_id: string | null
-          due_on: string
-          id: string
-          period: string
-          status: string
-        }
-        Insert: {
-          amount: number
-          apartment_id: string
-          complex_id: string
-          created_at?: string
-          document_id?: string | null
-          due_on: string
-          id?: string
-          period: string
-          status?: string
-        }
-        Update: {
-          amount?: number
-          apartment_id?: string
-          complex_id?: string
-          created_at?: string
-          document_id?: string | null
-          due_on?: string
-          id?: string
-          period?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "resident_invoices_apartment_id_fkey"
-            columns: ["apartment_id"]
-            isOneToOne: false
-            referencedRelation: "apartment_residents"
-            referencedColumns: ["apartment_id"]
-          },
-          {
-            foreignKeyName: "resident_invoices_apartment_id_fkey"
-            columns: ["apartment_id"]
-            isOneToOne: false
-            referencedRelation: "apartments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "resident_invoices_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "resident_invoices_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "house_documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      resident_payments: {
-        Row: {
-          amount: number
-          apartment_id: string
-          created_at: string
-          id: string
-          invoice_id: string | null
-          paid_at: string | null
-          provider: string
-          provider_payment_id: string | null
-          status: string
-          user_id: string
-        }
-        Insert: {
-          amount: number
-          apartment_id: string
-          created_at?: string
-          id?: string
-          invoice_id?: string | null
-          paid_at?: string | null
-          provider: string
-          provider_payment_id?: string | null
-          status?: string
-          user_id: string
-        }
-        Update: {
-          amount?: number
-          apartment_id?: string
-          created_at?: string
-          id?: string
-          invoice_id?: string | null
-          paid_at?: string | null
-          provider?: string
-          provider_payment_id?: string | null
-          status?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "resident_payments_apartment_id_fkey"
-            columns: ["apartment_id"]
-            isOneToOne: false
-            referencedRelation: "apartment_residents"
-            referencedColumns: ["apartment_id"]
-          },
-          {
-            foreignKeyName: "resident_payments_apartment_id_fkey"
-            columns: ["apartment_id"]
-            isOneToOne: false
-            referencedRelation: "apartments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "resident_payments_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "resident_invoices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "resident_payments_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       resident_vehicles: {
         Row: {
           complex_id: string
@@ -3425,92 +2938,6 @@ export type Database = {
           {
             foreignKeyName: "resident_vehicles_resident_id_fkey"
             columns: ["resident_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      role_permissions: {
-        Row: {
-          complex_id: string
-          enabled: boolean
-          permission: string
-          role: string
-        }
-        Insert: {
-          complex_id: string
-          enabled?: boolean
-          permission: string
-          role: string
-        }
-        Update: {
-          complex_id?: string
-          enabled?: boolean
-          permission?: string
-          role?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "role_permissions_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      service_providers: {
-        Row: {
-          categories: string[]
-          created_at: string
-          description: string | null
-          id: string
-          is_verified: boolean
-          profile_id: string
-          rating: number
-          recommended_by: string | null
-          reviews_count: number
-          service_areas: string[]
-          updated_at: string
-        }
-        Insert: {
-          categories?: string[]
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_verified?: boolean
-          profile_id: string
-          rating?: number
-          recommended_by?: string | null
-          reviews_count?: number
-          service_areas?: string[]
-          updated_at?: string
-        }
-        Update: {
-          categories?: string[]
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_verified?: boolean
-          profile_id?: string
-          rating?: number
-          recommended_by?: string | null
-          reviews_count?: number
-          service_areas?: string[]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "service_providers_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "service_providers_recommended_by_fkey"
-            columns: ["recommended_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -3885,63 +3312,6 @@ export type Database = {
           {
             foreignKeyName: "verification_requests_user_id_fkey"
             columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      visitor_passes: {
-        Row: {
-          access_code: string
-          complex_id: string
-          created_at: string
-          guest_name: string
-          id: string
-          kind: Database["public"]["Enums"]["visitor_pass_kind"]
-          resident_id: string
-          status: Database["public"]["Enums"]["visitor_pass_status"]
-          valid_from: string
-          valid_until: string
-          vehicle_plate: string | null
-        }
-        Insert: {
-          access_code?: string
-          complex_id: string
-          created_at?: string
-          guest_name: string
-          id?: string
-          kind?: Database["public"]["Enums"]["visitor_pass_kind"]
-          resident_id: string
-          status?: Database["public"]["Enums"]["visitor_pass_status"]
-          valid_from?: string
-          valid_until: string
-          vehicle_plate?: string | null
-        }
-        Update: {
-          access_code?: string
-          complex_id?: string
-          created_at?: string
-          guest_name?: string
-          id?: string
-          kind?: Database["public"]["Enums"]["visitor_pass_kind"]
-          resident_id?: string
-          status?: Database["public"]["Enums"]["visitor_pass_status"]
-          valid_from?: string
-          valid_until?: string
-          vehicle_plate?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "visitor_passes_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "visitor_passes_resident_id_fkey"
-            columns: ["resident_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]

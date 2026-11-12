@@ -28,7 +28,7 @@ profiles ↔ chat_members ↔ chats → messages
 profiles → notifications
 profiles → service_requests → notifications
 complexes → house_documents / official_votes / finance_accounts / emergency_alerts
-complexes → home_schedule_items / amenity_resources / visitor_passes
+complexes → home_schedule_items / amenity_resources / access_passes
 profiles → amenity_bookings / resident_vehicles
 ```
 
