@@ -929,12 +929,26 @@ async function buildChatItems(supabase: any, rows: any[], userId: string): Promi
   const summariesResult = await supabase.rpc("chat_summaries");
   if (summariesResult.error) throw summariesResult.error;
   const summaries = new Map<string, any>((summariesResult.data || []).map((row: any) => [row.chat_id, row]));
+  // Личный чат называется именем собеседника, как в мессенджерах.
+  const directIds = rows.filter((chat: any) => chat.type === "direct").map((chat: any) => chat.id);
+  const partners = new Map<string, { name: string; avatarUrl: string | null }>();
+  if (directIds.length) {
+    const { data, error } = await supabase.from("chat_members")
+      .select("chat_id, user:profiles(full_name, avatar_url)").in("chat_id", directIds).neq("user_id", userId);
+    if (error) throw error;
+    for (const row of data || []) {
+      const partner = relation<any>(row.user);
+      partners.set(row.chat_id, { name: partner?.full_name || "Сосед", avatarUrl: partner?.avatar_url ?? null });
+    }
+  }
   return rows.map((chat: any) => {
     const summary = summaries.get(chat.id);
     const lastAt = summary?.last_message_at || chat.last_message_at;
+    const partner = partners.get(chat.id);
     return {
       id: chat.id,
-      name: chat.name || "Чат сообщества",
+      name: partner?.name || chat.name || "Чат сообщества",
+      avatarUrl: partner?.avatarUrl ?? null,
       type: chat.type,
       lastMessage: summary?.last_message_at ? chatPreview(summary, userId) : "",
       lastMessageTime: lastAt ? chatTime(lastAt) : "",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Building2, DoorOpen, MessageCircle, Plus, Search, UserRound, Users } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import Avatar from "@/components/ui/Avatar";
 
 export default function ChatsPage() {
   const [activeTab, setActiveTab] = useState<"all" | "my" | "unread">("all");
@@ -88,7 +89,7 @@ export default function ChatsPage() {
               href={`/chats/${chat.id}`}
               className="flex min-h-[76px] items-center gap-3.5 px-4 py-3.5 transition hover:bg-stone-50 active:bg-stone-100"
             >
-              {(() => {
+              {chat.type === "direct" ? <Avatar url={chat.avatarUrl} name={chat.name} size={48} className="h-12 w-12 shrink-0 rounded-2xl" /> : (() => {
                 const Icon = chatIcon(chat.type);
                 return (
               <div

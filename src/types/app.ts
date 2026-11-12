@@ -46,6 +46,7 @@ export interface ChatItem {
   unreadCount: number;
   avatarColor: string;
   icon: string;
+  avatarUrl?: string | null;
   isOfficial?: boolean;
 }
 
