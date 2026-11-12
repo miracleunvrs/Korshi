@@ -7,6 +7,36 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.15"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       access_events: {
@@ -56,111 +86,6 @@ export type Database = {
             columns: ["pass_id"]
             isOneToOne: false
             referencedRelation: "access_passes"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      access_integration_commands: {
-        Row: {
-          command: string
-          completed_at: string | null
-          complex_id: string
-          created_at: string
-          device_id: string
-          id: string
-          provider: string
-          provider_response: Json | null
-          requested_by: string
-          status: string
-        }
-        Insert: {
-          command: string
-          completed_at?: string | null
-          complex_id?: string
-          created_at?: string
-          device_id: string
-          id?: string
-          provider: string
-          provider_response?: Json | null
-          requested_by?: string
-          status?: string
-        }
-        Update: {
-          command?: string
-          completed_at?: string | null
-          complex_id?: string
-          created_at?: string
-          device_id?: string
-          id?: string
-          provider?: string
-          provider_response?: Json | null
-          requested_by?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "access_integration_commands_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "access_integration_commands_requested_by_fkey"
-            columns: ["requested_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      access_lists: {
-        Row: {
-          complex_id: string
-          created_at: string
-          created_by: string
-          id: string
-          list_type: string
-          reason: string | null
-          subject_type: string
-          subject_value: string
-          valid_until: string | null
-        }
-        Insert: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          list_type: string
-          reason?: string | null
-          subject_type: string
-          subject_value: string
-          valid_until?: string | null
-        }
-        Update: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          list_type?: string
-          reason?: string | null
-          subject_type?: string
-          subject_value?: string
-          valid_until?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "access_lists_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "access_lists_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -524,45 +449,65 @@ export type Database = {
           },
         ]
       }
-      analytics_events: {
+      apartment_invites: {
         Row: {
-          complex_id: string | null
-          event_name: string
-          id: number
-          occurred_at: string
-          properties: Json
-          session_id: string | null
-          user_id: string | null
+          apartment_id: string
+          code: string
+          complex_id: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          used_by: string | null
         }
         Insert: {
-          complex_id?: string | null
-          event_name: string
-          id?: never
-          occurred_at?: string
-          properties?: Json
-          session_id?: string | null
-          user_id?: string | null
+          apartment_id: string
+          code: string
+          complex_id: string
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          used_by?: string | null
         }
         Update: {
-          complex_id?: string | null
-          event_name?: string
-          id?: never
-          occurred_at?: string
-          properties?: Json
-          session_id?: string | null
-          user_id?: string | null
+          apartment_id?: string
+          code?: string
+          complex_id?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          used_by?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "analytics_events_complex_id_fkey"
+            foreignKeyName: "apartment_invites_apartment_id_fkey"
+            columns: ["apartment_id"]
+            isOneToOne: false
+            referencedRelation: "apartments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apartment_invites_complex_id_fkey"
             columns: ["complex_id"]
             isOneToOne: false
             referencedRelation: "complexes"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "analytics_events_user_id_fkey"
-            columns: ["user_id"]
+            foreignKeyName: "apartment_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "apartment_invites_used_by_fkey"
+            columns: ["used_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -911,298 +856,6 @@ export type Database = {
             columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "posts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_club_members: {
-        Row: {
-          club_id: string
-          created_at: string
-          id: string
-          role: string
-          user_id: string
-        }
-        Insert: {
-          club_id: string
-          created_at?: string
-          id?: string
-          role?: string
-          user_id?: string
-        }
-        Update: {
-          club_id?: string
-          created_at?: string
-          id?: string
-          role?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_club_members_club_id_fkey"
-            columns: ["club_id"]
-            isOneToOne: false
-            referencedRelation: "community_clubs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_club_members_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_clubs: {
-        Row: {
-          chat_id: string | null
-          complex_id: string
-          created_at: string
-          created_by: string
-          description: string | null
-          id: string
-          is_private: boolean
-          name: string
-        }
-        Insert: {
-          chat_id?: string | null
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          id?: string
-          is_private?: boolean
-          name: string
-        }
-        Update: {
-          chat_id?: string | null
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          id?: string
-          is_private?: boolean
-          name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_clubs_chat_id_fkey"
-            columns: ["chat_id"]
-            isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_clubs_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_clubs_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_event_albums: {
-        Row: {
-          caption: string | null
-          created_at: string
-          event_id: string
-          id: string
-          uploaded_by: string
-          url: string
-        }
-        Insert: {
-          caption?: string | null
-          created_at?: string
-          event_id: string
-          id?: string
-          uploaded_by?: string
-          url: string
-        }
-        Update: {
-          caption?: string | null
-          created_at?: string
-          event_id?: string
-          id?: string
-          uploaded_by?: string
-          url?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_event_albums_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "community_events"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_event_albums_uploaded_by_fkey"
-            columns: ["uploaded_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_event_rsvps: {
-        Row: {
-          choice: string
-          event_id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          choice: string
-          event_id: string
-          updated_at?: string
-          user_id?: string
-        }
-        Update: {
-          choice?: string
-          event_id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_event_rsvps_event_id_fkey"
-            columns: ["event_id"]
-            isOneToOne: false
-            referencedRelation: "community_events"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_event_rsvps_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_events: {
-        Row: {
-          capacity: number | null
-          complex_id: string
-          created_at: string
-          created_by: string
-          description: string | null
-          ends_at: string | null
-          id: string
-          location: string
-          reminder_offsets_minutes: number[]
-          starts_at: string
-          status: string
-          title: string
-        }
-        Insert: {
-          capacity?: number | null
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          ends_at?: string | null
-          id?: string
-          location: string
-          reminder_offsets_minutes?: number[]
-          starts_at: string
-          status?: string
-          title: string
-        }
-        Update: {
-          capacity?: number | null
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          description?: string | null
-          ends_at?: string | null
-          id?: string
-          location?: string
-          reminder_offsets_minutes?: number[]
-          starts_at?: string
-          status?: string
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_events_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_events_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      community_notices: {
-        Row: {
-          complex_id: string
-          created_at: string
-          created_by: string
-          current_quantity: number | null
-          description: string
-          id: string
-          kind: string
-          price: number | null
-          status: string
-          target_quantity: number | null
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          current_quantity?: number | null
-          description: string
-          id?: string
-          kind: string
-          price?: number | null
-          status?: string
-          target_quantity?: number | null
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          complex_id?: string
-          created_at?: string
-          created_by?: string
-          current_quantity?: number | null
-          description?: string
-          id?: string
-          kind?: string
-          price?: number | null
-          status?: string
-          target_quantity?: number | null
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "community_notices_complex_id_fkey"
-            columns: ["complex_id"]
-            isOneToOne: false
-            referencedRelation: "complexes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "community_notices_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1803,6 +1456,9 @@ export type Database = {
           fundraiser_id: string
           id: string
           is_anonymous: boolean
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
           user_id: string | null
         }
         Insert: {
@@ -1813,6 +1469,9 @@ export type Database = {
           fundraiser_id: string
           id?: string
           is_anonymous?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           user_id?: string | null
         }
         Update: {
@@ -1823,6 +1482,9 @@ export type Database = {
           fundraiser_id?: string
           id?: string
           is_anonymous?: boolean
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           user_id?: string | null
         }
         Relationships: [
@@ -1831,6 +1493,13 @@ export type Database = {
             columns: ["fundraiser_id"]
             isOneToOne: false
             referencedRelation: "fundraisers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fundraiser_payments_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -2285,57 +1954,6 @@ export type Database = {
           },
           {
             foreignKeyName: "marketplace_favorites_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      marketplace_promotions: {
-        Row: {
-          amount: number
-          classified_id: string
-          created_at: string
-          ends_at: string
-          id: string
-          payment_status: string
-          provider_payment_id: string | null
-          starts_at: string
-          user_id: string
-        }
-        Insert: {
-          amount: number
-          classified_id: string
-          created_at?: string
-          ends_at: string
-          id?: string
-          payment_status?: string
-          provider_payment_id?: string | null
-          starts_at?: string
-          user_id?: string
-        }
-        Update: {
-          amount?: number
-          classified_id?: string
-          created_at?: string
-          ends_at?: string
-          id?: string
-          payment_status?: string
-          provider_payment_id?: string | null
-          starts_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "marketplace_promotions_classified_id_fkey"
-            columns: ["classified_id"]
-            isOneToOne: false
-            referencedRelation: "classifieds"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "marketplace_promotions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -4520,8 +4138,12 @@ export type Database = {
         }
       }
       auth_user_apartment_id: { Args: never; Returns: string }
+      auth_user_can_assign_roles: { Args: never; Returns: boolean }
       auth_user_can_manage: { Args: never; Returns: boolean }
+      auth_user_can_verify: { Args: never; Returns: boolean }
       auth_user_complex_id: { Args: never; Returns: string }
+      auth_user_is_management: { Args: never; Returns: boolean }
+      auth_user_is_security: { Args: never; Returns: boolean }
       auth_user_membership_role: { Args: never; Returns: string }
       auth_user_role: {
         Args: never
@@ -4552,6 +4174,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      can_review_applicant: {
+        Args: { p_building_number: string; p_user_id: string }
+        Returns: boolean
       }
       can_view_service_request: {
         Args: { p_request_id: string }
@@ -4601,6 +4227,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      chat_summaries: {
+        Args: never
+        Returns: {
+          chat_id: string
+          last_message: string
+          last_message_at: string
+          last_message_type: Database["public"]["Enums"]["message_type"]
+          last_sender_id: string
+          last_sender_name: string
+          unread_count: number
+        }[]
       }
       close_expired_official_votes: { Args: never; Returns: number }
       complete_ai_job: {
@@ -4664,7 +4302,64 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_apartment_invite: {
+        Args: { p_apartment_id: string }
+        Returns: {
+          apartment_id: string
+          code: string
+          complex_id: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          used_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "apartment_invites"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_direct_chat: { Args: { p_target_user: string }; Returns: string }
+      create_official_vote: {
+        Args: {
+          p_basis: Database["public"]["Enums"]["official_vote_basis"]
+          p_description: string
+          p_ends_at: string
+          p_quorum_percent: number
+          p_starts_at: string
+          p_title: string
+        }
+        Returns: {
+          agenda: Json
+          auto_close: boolean
+          basis: Database["public"]["Enums"]["official_vote_basis"]
+          complex_id: string
+          created_at: string
+          created_by: string
+          description: string
+          eligible_units: number
+          eligible_weight: number
+          ends_at: string
+          id: string
+          protocol_path: string | null
+          quorum_percent: number
+          reminder_offsets_minutes: number[]
+          requires_signature: boolean
+          starts_at: string
+          status: Database["public"]["Enums"]["official_vote_status"]
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "official_votes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_post_bundle: {
         Args: {
           p_attachments?: Json
@@ -4675,10 +4370,19 @@ export type Database = {
         }
         Returns: string
       }
+      create_service_request: {
+        Args: { p_attachments?: Json; p_request: Json }
+        Returns: string
+      }
+      ensure_profile_membership: {
+        Args: { p_user_id: string; p_verified?: boolean }
+        Returns: undefined
+      }
       execute_platform_mutation: {
         Args: { p_complex_id: string; p_id: string; p_mutation: Json }
         Returns: Json
       }
+      expire_access_passes: { Args: never; Returns: number }
       fail_ai_job: {
         Args: { p_error_code: string; p_job_id: string }
         Returns: {
@@ -4720,7 +4424,16 @@ export type Database = {
         }[]
       }
       is_chat_member: { Args: { p_chat_id: string }; Returns: boolean }
+      legacy_role_for_membership: {
+        Args: { p_role: string }
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
+      mark_chat_read: { Args: { p_chat_id: string }; Returns: undefined }
       mark_overdue_service_requests: { Args: never; Returns: number }
+      membership_role_for_legacy: {
+        Args: { p_role: Database["public"]["Enums"]["user_role"] }
+        Returns: string
+      }
       merge_service_requests: {
         Args: {
           p_confidence?: number
@@ -4729,6 +4442,15 @@ export type Database = {
           p_suggested_by?: string
         }
         Returns: undefined
+      }
+      own_profile_apartment_id: { Args: never; Returns: string }
+      own_profile_complex_id: { Args: never; Returns: string }
+      post_is_official_content: {
+        Args: {
+          p_is_official: boolean
+          p_type: Database["public"]["Enums"]["post_type"]
+        }
+        Returns: boolean
       }
       publish_emergency_alert: {
         Args: {
@@ -4839,6 +4561,9 @@ export type Database = {
           fundraiser_id: string
           id: string
           is_anonymous: boolean
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
           user_id: string | null
         }
         SetofOptions: {
@@ -4848,6 +4573,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      redeem_apartment_invite: { Args: { p_code: string }; Returns: string }
       reopen_service_request: {
         Args: { p_message: string; p_request_id: string }
         Returns: {
@@ -4884,6 +4610,28 @@ export type Database = {
         Args: { p_alert_id: string }
         Returns: undefined
       }
+      review_fundraiser_payment: {
+        Args: { p_confirmed: boolean; p_payment_id: string }
+        Returns: {
+          amount: number
+          comment: string | null
+          confirmed_at: string | null
+          created_at: string
+          fundraiser_id: string
+          id: string
+          is_anonymous: boolean
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "fundraiser_payments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       review_verification_request: {
         Args: { p_approved: boolean; p_reason?: string; p_request_id: string }
         Returns: {
@@ -4909,17 +4657,46 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      rsvp_community_event: {
-        Args: { p_choice: string; p_event_id: string }
+      revoke_member_access: {
+        Args: { p_membership_id: string }
         Returns: {
-          choice: string
-          event_id: string
+          apartment_id: string | null
+          complex_id: string
+          created_at: string
+          id: string
+          invited_by: string | null
+          is_active: boolean
+          is_verified: boolean
+          ownership_share: number | null
+          role: string
           updated_at: string
           user_id: string
         }
         SetofOptions: {
           from: "*"
-          to: "community_event_rsvps"
+          to: "complex_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_member_role: {
+        Args: { p_membership_id: string; p_role: string }
+        Returns: {
+          apartment_id: string | null
+          complex_id: string
+          created_at: string
+          id: string
+          invited_by: string | null
+          is_active: boolean
+          is_verified: boolean
+          ownership_share: number | null
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "complex_memberships"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -5080,12 +4857,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5109,11 +4886,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5134,11 +4911,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5159,11 +4936,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5176,11 +4953,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -5190,6 +4967,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       amenity_booking_status: ["confirmed", "cancelled", "completed"],
@@ -5280,4 +5060,3 @@ export const Constants = {
     },
   },
 } as const
-
