@@ -25,7 +25,11 @@ SELECT is((SELECT count(*) FROM storage.objects WHERE name LIKE 'eeeeeeee-eeee-4
 SELECT is((SELECT count(*) FROM verification_requests WHERE id='ffffffff-ffff-4fff-8fff-ffffffffffc0'),0::bigint,'Administrator cannot see requests of another complex');
 SELECT is((SELECT count(*) FROM verification_requests WHERE id='ffffffff-ffff-4fff-8fff-ffffffffffc1'),1::bigint,'Unlinked applicant naming a building of this complex is visible');
 SELECT is((SELECT count(*) FROM storage.objects WHERE name='eeeeeeee-eeee-4eee-8eee-0000000000c1/verification/lease.pdf'),1::bigint,'Reviewer can open the applicant document');
-DELETE FROM storage.objects WHERE name='eeeeeeee-eeee-4eee-8eee-0000000000c1/verification/lease.pdf';
+-- Hosted Supabase also blocks direct SQL deletes from storage; either way the file must stay.
+DO $$ BEGIN
+  DELETE FROM storage.objects WHERE name='eeeeeeee-eeee-4eee-8eee-0000000000c1/verification/lease.pdf';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 SELECT is((SELECT count(*) FROM storage.objects WHERE name='eeeeeeee-eeee-4eee-8eee-0000000000c1/verification/lease.pdf'),1::bigint,'Reviewer cannot delete applicant files');
 
 -- The chair reviews as well as the administrator.
