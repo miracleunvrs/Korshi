@@ -43,8 +43,8 @@ test("a resident pass waits for HOA approval and can be cancelled", async ({ pag
   await dialog.getByLabel("Имя гостя").fill(guest);
   await dialog.getByLabel("Действует до").fill(soonLocal());
   await dialog.getByRole("button", { name: "Создать QR-пропуск" }).click();
-  await expect(page.getByText("Пропуск отправлен на одобрение ОСИ")).toBeVisible();
-  const pending = page.locator("section").filter({ hasText: "Ждут одобрения ОСИ" }).locator("div.rounded-2xl").filter({ hasText: guest });
+  await expect(page.getByText("Пропуск отправлен на одобрение ОСИ").first()).toBeVisible();
+  const pending = page.getByRole("article", { name: `Пропуск на одобрении: ${guest}` });
   await page.reload();
   await expect(pending).toBeVisible();
   await expect(page.getByLabel(`QR-пропуск для ${guest}`)).toHaveCount(0);
