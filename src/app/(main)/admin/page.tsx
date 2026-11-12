@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import NextImage from "next/image";
 import { 
@@ -30,6 +30,16 @@ import {
 import { useAppStore } from "@/stores/appStore";
 import { useOperationsStore } from "@/stores/operationsStore";
 import { syncPlatformMutation } from "@/lib/supabase/platformRepository";
+import { loadResidents, revokeMemberAccess, setMemberRole, type ResidentRecord } from "@/lib/supabase/repository";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { activeVotes } from "@/features/dashboard/summary";
+import ContentManager from "@/components/admin/ContentManager";
+import InviteManager from "@/components/admin/InviteManager";
+
+const roleLabels: Record<string, string> = {
+  owner: "Собственник", tenant: "Арендатор", family: "Член семьи", chair: "Председатель ОСИ",
+  admin: "Администратор", dispatcher: "Диспетчер", executor: "Исполнитель", guard: "Охрана", concierge: "Консьерж",
+};
 
 export default function AdminPage() {
   const { 
@@ -43,21 +53,64 @@ export default function AdminPage() {
     officialVotes,
     documents,
     finance,
-    registeredUsers,
   } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<"requests" | "residents" | "alert" | "stats">("stats");
+  const [activeTab, setActiveTab] = useState<"requests" | "residents" | "alert" | "stats" | "content" | "invites">("stats");
   const [selectedDocImage, setSelectedDocImage] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<{ id: string; reason: string } | null>(null);
   const [broadcastStatus, setBroadcastStatus] = useState("");
-  const marketplace = useOperationsStore((state) => state.marketplace);
   const accessEvents = useOperationsStore((state) => state.accessEvents);
   const works = useOperationsStore((state) => state.works);
 
   // Urgent alert form
   const [alertTitle, setAlertTitle] = useState(urgentAlert?.title || "");
   const [alertMessage, setAlertMessage] = useState(urgentAlert?.message || "");
+  const [alertAreas, setAlertAreas] = useState(urgentAlert?.affectedAreas.join(", ") || "");
+  const [alertResolution, setAlertResolution] = useState(urgentAlert?.expectedResolution || "");
+  const [alertPhone, setAlertPhone] = useState(urgentAlert?.contactPhone || "");
+  const [alertStatus, setAlertStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [alertBusy, setAlertBusy] = useState(false);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
-  if (currentUser.role !== "admin" && currentUser.role !== "hoa_official") {
+  const canAssignRoles = currentUser.membershipRole === "chair" || currentUser.membershipRole === "admin";
+  const [residents, setResidents] = useState<ResidentRecord[]>([]);
+  const [residentsError, setResidentsError] = useState("");
+  const [residentsVersion, setResidentsVersion] = useState(0);
+  const [residentBusy, setResidentBusy] = useState<string | null>(null);
+  const isManager = currentUser.role === "admin" || currentUser.role === "hoa_official";
+
+  // Ссылки вида /admin?tab=content открывают нужную вкладку.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested !== "content" && requested !== "invites" && requested !== "residents") return;
+    const timer = window.setTimeout(() => setActiveTab(requested), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isManager || !isSupabaseConfigured()) return;
+    void loadResidents().then((rows) => { setResidents(rows); setResidentsError(""); })
+      .catch((cause) => setResidentsError(cause instanceof Error ? cause.message : "Не удалось загрузить реестр"));
+  }, [isManager, residentsVersion]);
+
+  const changeRole = async (resident: ResidentRecord, role: string) => {
+    if (!resident.membershipId) return;
+    setResidentBusy(resident.userId); setResidentsError("");
+    try { await setMemberRole(resident.membershipId, role); setResidentsVersion((version) => version + 1); }
+    catch (cause) { setResidentsError(cause instanceof Error ? cause.message : "Не удалось изменить роль"); }
+    finally { setResidentBusy(null); }
+  };
+
+  const revokeAccess = async (resident: ResidentRecord) => {
+    if (!resident.membershipId || !window.confirm(`Отозвать доступ ${resident.fullName}? Житель потеряет доступ к чатам и данным дома.`)) return;
+    setResidentBusy(resident.userId); setResidentsError("");
+    try { await revokeMemberAccess(resident.membershipId); setResidentsVersion((version) => version + 1); }
+    catch (cause) { setResidentsError(cause instanceof Error ? cause.message : "Не удалось отозвать доступ"); }
+    finally { setResidentBusy(null); }
+  };
+
+  if (!isManager) {
     return (
       <div className="min-h-screen bg-white p-8 flex flex-col items-center justify-center text-center gap-4">
         <ShieldCheck className="w-10 h-10 text-gray-300" />
@@ -67,25 +120,37 @@ export default function AdminPage() {
     );
   }
 
-  const handleSaveAlert = (e: React.FormEvent) => {
+  const handleSaveAlert = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!alertTitle.trim()) return;
-
-    setUrgentAlert({
-      id: `alert-${Date.now()}`,
-      title: alertTitle.trim(),
-      message: alertMessage.trim(),
-      affectedAreas: [],
-      active: true,
-      acknowledged: false,
-      createdAt: "Только что",
-    });
+    setAlertBusy(true); setAlertStatus(null);
+    try {
+      await setUrgentAlert({
+        id: `alert-${Date.now()}`,
+        title: alertTitle.trim(),
+        message: alertMessage.trim(),
+        affectedAreas: alertAreas.split(",").map((area) => area.trim()).filter(Boolean),
+        expectedResolution: alertResolution.trim() || undefined,
+        contactPhone: alertPhone.trim() || undefined,
+        active: true,
+        acknowledged: false,
+        createdAt: new Date().toLocaleString("ru-RU"),
+      });
+      setAlertStatus({ tone: "ok", text: "Оповещение опубликовано, жители получили уведомление." });
+    } catch (cause) {
+      setAlertStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Не удалось опубликовать оповещение" });
+    } finally { setAlertBusy(false); }
   };
 
-  const handleDisableAlert = () => {
-    setUrgentAlert(null);
-    setAlertTitle("");
-    setAlertMessage("");
+  const handleDisableAlert = async () => {
+    setAlertBusy(true); setAlertStatus(null);
+    try {
+      await setUrgentAlert(null);
+      setAlertTitle(""); setAlertMessage(""); setAlertAreas(""); setAlertResolution(""); setAlertPhone("");
+      setAlertStatus({ tone: "ok", text: "Оповещение снято." });
+    } catch (cause) {
+      setAlertStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Не удалось снять оповещение" });
+    } finally { setAlertBusy(false); }
   };
 
   const pendingRequests = verificationRequests.filter((r) => r.status === "pending");
@@ -94,17 +159,25 @@ export default function AdminPage() {
   const averageRating = ratedRequests.length
     ? ratedRequests.reduce((sum, request) => sum + (request.rating || 0), 0) / ratedRequests.length
     : 0;
-  const overdueRequests = activeServiceRequests.filter((request) => request.priority === "emergency" || request.events.some((event) => event.kind === "reopened"));
+  const attentionRequests = activeServiceRequests.filter((request) => request.priority === "emergency" || request.events.some((event) => event.kind === "reopened"));
+  const verifiedResidents = residents.filter((resident) => resident.verified).length;
 
-  const sendBroadcast = async () => {
-    const text = window.prompt("Текст массового уведомления для жителей ЖК");
-    if (!text?.trim()) return;
-    const result = await syncPlatformMutation({ operation: "insert", table: "notification_broadcasts", payload: { title: "Сообщение ОСИ", body: text.trim(), channels: ["in_app", "push"] } });
-    setBroadcastStatus(result.queued ? "Рассылка сохранена в очереди синхронизации" : "Рассылка поставлена в очередь доставки");
+  const sendBroadcast = async (event: FormEvent) => {
+    event.preventDefault();
+    const text = broadcastText.trim();
+    if (!text) return;
+    setBroadcastStatus("");
+    try {
+      const result = await syncPlatformMutation({ operation: "insert", table: "notification_broadcasts", payload: { title: "Сообщение ОСИ", body: text, channels: ["in_app"] } });
+      setBroadcastStatus(result.queued ? "Нет связи: рассылка уйдёт после синхронизации" : "Сообщение отправлено всем подтверждённым жителям");
+      setBroadcastText(""); setBroadcastOpen(false);
+    } catch (cause) {
+      setBroadcastStatus(cause instanceof Error ? cause.message : "Не удалось отправить рассылку");
+    }
   };
 
   const exportAdminReport = () => {
-    const rows = [["Показатель", "Значение"], ["Открытые заявки", String(activeServiceRequests.length)], ["Просроченные", String(overdueRequests.length)], ["Средняя оценка", averageRating.toFixed(1)], ["Жители", String(registeredUsers.length)], ["Жалобы маркетплейса", String(marketplace.reports.length)], ["События доступа", String(accessEvents.length)]];
+    const rows = [["Показатель", "Значение"], ["Открытые заявки", String(activeServiceRequests.length)], ["Аварийные и повторно открытые", String(attentionRequests.length)], ["Средняя оценка", averageRating.toFixed(1)], ["Жители в реестре", String(residents.length)], ["Подтверждённые жители", String(verifiedResidents)], ["События доступа", String(accessEvents.length)]];
     const blob = new Blob(["\uFEFF" + rows.map((row) => row.join(";")).join("\n")], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "korshi-admin-report.csv"; anchor.click(); URL.revokeObjectURL(url);
   };
 
@@ -124,16 +197,18 @@ export default function AdminPage() {
           </div>
 
           <span className="px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200">
-            Администратор ЖК
+            {currentUser.role === "admin" ? "Администратор ЖК" : "Председатель ОСИ"}
           </span>
         </div>
 
         {/* Вкладки админки */}
-        <div className="flex gap-2 border-b border-gray-100 pb-1">
+        <div className="flex gap-2 overflow-x-auto whitespace-nowrap border-b border-gray-100 pb-1">
           {[
             { id: "stats", label: "Обзор" },
             { id: "requests", label: "Заявки на верификацию", badge: pendingRequests.length },
             { id: "residents", label: "Реестр жильцов" },
+            { id: "invites", label: "Коды для квартир" },
+            { id: "content", label: "Контент дома" },
             { id: "alert", label: "Экстренное оповещение" },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
@@ -167,15 +242,15 @@ export default function AdminPage() {
               {[
                 { label: "Активные заявки", value: activeServiceRequests.length, detail: `${serviceRequests.filter((request) => request.status === "submitted").length} новых`, icon: ClipboardList, tone: "bg-green-100 text-green-800" },
                 { label: "Оценка сервиса", value: averageRating ? averageRating.toFixed(1) : "—", detail: `${ratedRequests.length} оценок`, icon: Star, tone: "bg-amber-100 text-amber-900" },
-                { label: "Активные голосования", value: officialVotes.filter((vote) => vote.status === "active").length, detail: "контроль кворума", icon: Vote, tone: "bg-violet-100 text-violet-800" },
+                { label: "Активные голосования", value: activeVotes(officialVotes).length, detail: "контроль кворума", icon: Vote, tone: "bg-violet-100 text-violet-800" },
                 { label: "Баланс ОСИ", value: `${Math.round(finance.balance / 1000).toLocaleString("ru-RU")} тыс. ₸`, detail: "по журналу операций", icon: WalletCards, tone: "bg-sky-100 text-sky-800" },
               ].map((item) => <div key={item.label} className="rounded-[22px] border border-stone-200 bg-white p-4 shadow-sm"><span className={`grid h-10 w-10 place-items-center rounded-xl ${item.tone}`}><item.icon className="h-5 w-5" /></span><p className="mt-4 text-2xl font-black tracking-tight text-stone-950">{item.value}</p><p className="mt-1 text-xs font-extrabold text-stone-700">{item.label}</p><p className="text-[11px] text-stone-400">{item.detail}</p></div>)}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
-              ["Среднее время ответа", "42 мин", "за 30 дней"],
-              ["Просроченные заявки", String(overdueRequests.length), "SLA и повторно открытые"],
-              ["Активность жителей", `${Math.min(100, Math.round(registeredUsers.filter((user) => user.verified).length / Math.max(1, registeredUsers.length) * 100))}%`, "подтверждённые аккаунты"],
+              ["Ждут проверки", String(pendingRequests.length), "заявки на подтверждение жителей"],
+              ["Требуют внимания", String(attentionRequests.length), "аварийные и повторно открытые заявки"],
+              ["Подтверждены", residents.length ? `${verifiedResidents} из ${residents.length}` : "—", "жители в реестре"],
               ["Пропущенные работы", String(works.filter((work) => work.status === "missed").length), "требуют переноса"],
             ].map(([label, value, detail]) => <article key={label} className="rounded-[22px] border border-stone-200 bg-stone-50 p-4"><p className="text-xl font-black text-stone-950">{value}</p><p className="mt-1 text-xs font-extrabold text-stone-800">{label}</p><p className="mt-1 text-[10px] text-stone-500">{detail}</p></article>)}</div>
 
@@ -183,13 +258,13 @@ export default function AdminPage() {
               <section className="rounded-[24px] border border-stone-200 bg-white p-5"><div className="flex items-center justify-between"><div><h2 className="text-sm font-extrabold text-stone-950">Очередь обслуживания</h2><p className="text-xs text-stone-500">Заявки, требующие внимания</p></div><Link href="/requests" className="text-xs font-extrabold text-green-800">Открыть все</Link></div><div className="mt-4 space-y-2">{activeServiceRequests.slice(0, 4).map((request) => <Link key={request.id} href="/requests" className="flex min-h-16 items-center gap-3 rounded-2xl bg-stone-50 p-3 transition hover:bg-stone-100"><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${request.priority === "emergency" ? "bg-rose-500" : request.status === "submitted" ? "bg-sky-500" : "bg-amber-500"}`} /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-extrabold text-stone-900">{request.title}</span><span className="block truncate text-[11px] text-stone-500">{request.location}</span></span>{request.slaDueAt && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800"><Clock3 className="h-3 w-3" />{request.slaDueAt}</span>}</Link>)}</div></section>
 
               <section className="rounded-[24px] border border-stone-200 bg-white p-5"><div className="flex items-center justify-between"><div><h2 className="text-sm font-extrabold text-stone-950">Состояние дома</h2><p className="text-xs text-stone-500">Контент и участие жителей</p></div><TrendingUp className="h-5 w-5 text-green-700" /></div><dl className="mt-4 divide-y divide-stone-100">{[
-                ["Подтверждённые жители", registeredUsers.filter((user) => user.verified).length],
-                ["Документы в архиве", documents.filter((document) => document.status === "active").length],
+                ["Подтверждённые жители", verifiedResidents],
+                ["Действующие документы", documents.filter((document) => document.status === "active").length],
                 ["Требуют ознакомления", documents.filter((document) => document.requiresAcknowledgement && !document.acknowledged).length],
                 ["Завершённые заявки", serviceRequests.filter((request) => request.status === "resolved" || request.status === "closed").length],
               ].map(([label, value]) => <div key={label} className="flex min-h-12 items-center justify-between text-xs"><dt className="font-semibold text-stone-600">{label}</dt><dd className="font-black text-stone-950">{value}</dd></div>)}</dl><div className="mt-4 grid grid-cols-3 gap-2"><Link href="/documents" className="rounded-xl bg-violet-50 px-2 py-3 text-center text-[10px] font-extrabold text-violet-800">Документы</Link><Link href="/votes" className="rounded-xl bg-amber-50 px-2 py-3 text-center text-[10px] font-extrabold text-amber-900">Голосования</Link><Link href="/finance" className="rounded-xl bg-green-50 px-2 py-3 text-center text-[10px] font-extrabold text-green-800">Финансы</Link></div></section>
             </div>
-            <section className="rounded-[24px] border border-stone-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-extrabold text-stone-950">Операции управления</h2><p className="text-xs text-stone-500">Коммуникации, отчёты и контроль</p></div><Settings2 className="h-5 w-5 text-stone-500" /></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><button onClick={() => void sendBroadcast()} className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-green-800 px-2 text-[10px] font-extrabold text-white"><Send className="h-4 w-4" />Рассылка</button><button onClick={exportAdminReport} className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-violet-50 px-2 text-[10px] font-extrabold text-violet-800"><Download className="h-4 w-4" />Экспорт</button><Link href="/operations" className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-amber-50 px-2 text-[10px] font-extrabold text-amber-900"><Shield className="h-4 w-4" />Безопасность</Link><Link href="/admin/settings" className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-stone-100 px-2 text-[10px] font-extrabold text-stone-800"><Settings2 className="h-4 w-4" />Настройки ЖК</Link></div>{broadcastStatus && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{broadcastStatus}</p>}<div className="mt-4 grid gap-2 sm:grid-cols-3"><p className="rounded-xl bg-stone-50 p-3 text-[10px] font-bold text-stone-600">Модерация: {marketplace.reports.filter((report) => report.status === "new").length} новых жалоб</p><p className="rounded-xl bg-stone-50 p-3 text-[10px] font-bold text-stone-600">Журнал безопасности: {accessEvents.length} событий</p><p className="rounded-xl bg-stone-50 p-3 text-[10px] font-bold text-stone-600">Ознакомление: {documents.filter((document) => document.acknowledged).length}/{documents.filter((document) => document.requiresAcknowledgement).length || documents.length}</p></div></section>
+            <section className="rounded-[24px] border border-stone-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-extrabold text-stone-950">Операции управления</h2><p className="text-xs text-stone-500">Коммуникации, отчёты и контроль</p></div><Settings2 className="h-5 w-5 text-stone-500" /></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4"><button onClick={() => setBroadcastOpen((open) => !open)} className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-green-800 px-2 text-[10px] font-extrabold text-white"><Send className="h-4 w-4" />Рассылка</button><button onClick={exportAdminReport} className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-violet-50 px-2 text-[10px] font-extrabold text-violet-800"><Download className="h-4 w-4" />Экспорт</button><Link href="/operations" className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-amber-50 px-2 text-[10px] font-extrabold text-amber-900"><Shield className="h-4 w-4" />Безопасность</Link><Link href="/admin/settings" className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-stone-100 px-2 text-[10px] font-extrabold text-stone-800"><Settings2 className="h-4 w-4" />Настройки ЖК</Link></div>{broadcastOpen && <form onSubmit={sendBroadcast} className="mt-3 flex flex-col gap-2"><textarea value={broadcastText} onChange={(event) => setBroadcastText(event.target.value)} rows={3} placeholder="Текст сообщения для всех жителей ЖК" className="w-full rounded-xl border border-stone-200 p-3 text-xs" /><button disabled={!broadcastText.trim()} className="self-end rounded-xl bg-green-800 px-4 py-2 text-xs font-extrabold text-white disabled:opacity-50">Отправить</button></form>}{broadcastStatus && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{broadcastStatus}</p>}<div className="mt-4 grid gap-2 sm:grid-cols-3"><p className="rounded-xl bg-stone-50 p-3 text-[10px] font-bold text-stone-600">Журнал безопасности: {accessEvents.length} событий</p><p className="rounded-xl bg-stone-50 p-3 text-[10px] font-bold text-stone-600">Ознакомление: {documents.filter((document) => document.acknowledged).length}/{documents.filter((document) => document.requiresAcknowledgement).length || documents.length}</p></div></section>
           </div>
         )}
 
@@ -222,22 +297,36 @@ export default function AdminPage() {
                     }`}
                   >
                     <div className="flex items-start gap-3.5">
-                      <div
-                        onClick={() => setSelectedDocImage(req.documentUrl)}
-                        className="w-16 h-16 rounded-2xl bg-gray-100 overflow-hidden ring-1 ring-black/5 cursor-pointer relative group shrink-0"
-                      >
-                        <NextImage
-                          src={req.documentUrl}
-                          alt="Документ"
-                          fill
-                          sizes="64px"
-                          unoptimized
-                          className="object-cover group-hover:scale-105 transition"
-                        />
-                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
-                          <Eye className="w-4 h-4" />
-                        </div>
-                      </div>
+                      {req.documentType.startsWith("image/") ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDocImage(req.documentUrl)}
+                          className="w-16 h-16 rounded-2xl bg-gray-100 overflow-hidden ring-1 ring-black/5 cursor-pointer relative group shrink-0"
+                          aria-label={`Открыть документ ${req.fullName}`}
+                        >
+                          <NextImage
+                            src={req.documentUrl}
+                            alt="Документ"
+                            fill
+                            sizes="64px"
+                            unoptimized
+                            className="object-cover group-hover:scale-105 transition"
+                          />
+                          <span className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                            <Eye className="w-4 h-4" />
+                          </span>
+                        </button>
+                      ) : (
+                        <a
+                          href={req.documentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-16 h-16 rounded-2xl bg-gray-100 ring-1 ring-black/5 shrink-0 flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-gray-600 hover:bg-gray-200"
+                        >
+                          <FileCheck className="w-5 h-5" />
+                          PDF
+                        </a>
+                      )}
 
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -259,12 +348,37 @@ export default function AdminPage() {
                         </p>
 
                         <p className="text-[11px] text-gray-400">
-                          {req.documentType} • {req.submittedAt}
+                          Подана {req.submittedAt}
                         </p>
+                        {req.status === "rejected" && req.reviewReason && (
+                          <p className="text-[11px] text-red-700">Причина: {req.reviewReason}</p>
+                        )}
                       </div>
                     </div>
 
-                    {req.status === "pending" && (
+                    {req.status === "pending" && rejecting?.id === req.id && (
+                      <form
+                        className="flex w-full flex-col gap-2 sm:w-72"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          rejectVerification(req.id, rejecting.reason.trim() || undefined);
+                          setRejecting(null);
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={rejecting.reason}
+                          onChange={(event) => setRejecting({ id: req.id, reason: event.target.value })}
+                          placeholder="Причина отказа — её увидит житель"
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs"
+                        />
+                        <div className="flex gap-2">
+                          <button type="submit" className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white">Отклонить</button>
+                          <button type="button" onClick={() => setRejecting(null)} className="rounded-xl bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600">Отмена</button>
+                        </div>
+                      </form>
+                    )}
+                    {req.status === "pending" && rejecting?.id !== req.id && (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() => approveVerification(req.id)}
@@ -273,7 +387,7 @@ export default function AdminPage() {
                           <Check className="w-3.5 h-3.5 stroke-[3]" /> Одобрить
                         </button>
                         <button
-                          onClick={() => rejectVerification(req.id)}
+                          onClick={() => setRejecting({ id: req.id, reason: "" })}
                           className="px-3.5 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
                         >
                           <X className="w-3.5 h-3.5" /> Отклонить
@@ -291,39 +405,54 @@ export default function AdminPage() {
         {activeTab === "residents" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-gray-900 text-sm">База жильцов ЖК (120 квартир)</h2>
-              <span className="text-xs font-semibold text-green-600">89 подтверждено</span>
+              <h2 className="font-bold text-gray-900 text-sm">Реестр жителей ({residents.length})</h2>
+              <span className="text-xs font-semibold text-green-600">{verifiedResidents} подтверждено</span>
             </div>
-
-            <div className="divide-y divide-gray-100 rounded-3xl border border-gray-200 overflow-hidden bg-white">
-              {[
-                { name: "Мария Иванова", apt: "Дом 2, кв. 45", phone: "+7 (777) 234-56-78", role: "Администратор", verified: true },
-                { name: "Алексей Петров", apt: "Дом 1, кв. 12", phone: "+7 (701) 444-55-66", role: "Житель", verified: true },
-                { name: "Олег Смирнов", apt: "Дом 1, кв. 3", phone: "+7 (775) 123-99-88", role: "Мастер-электрик", verified: true },
-                { name: "Бауыржан Сапаров", apt: "Дом 1, кв. 28", phone: "+7 (701) 987-65-43", role: "Житель", verified: false },
-              ].map((res, idx) => (
-                <div key={idx} className="p-4 flex items-center justify-between hover:bg-gray-50 transition">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-100 text-green-800 font-bold flex items-center justify-center text-xs">
-                      {res.name.charAt(0)}
+            {!canAssignRoles && <p className="text-xs text-gray-500">Назначать роли и отзывать доступ может председатель или администратор.</p>}
+            {residentsError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-xs text-red-700">{residentsError}</p>}
+            {residents.length === 0 ? (
+              <p className="rounded-3xl bg-gray-50 p-8 text-center text-xs text-gray-500">{isSupabaseConfigured() ? "В реестре пока нет жителей." : "Реестр доступен при подключённом сервере."}</p>
+            ) : (
+              <div className="divide-y divide-gray-100 rounded-3xl border border-gray-200 overflow-hidden bg-white">
+                {residents.map((resident) => (
+                  <div key={resident.userId} className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-100 text-green-800 font-bold flex items-center justify-center text-xs">
+                        {resident.fullName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900 text-xs">{resident.fullName}{resident.userId === currentUser.id ? " · вы" : ""}</p>
+                        <p className="text-[11px] text-gray-500">{resident.address}{resident.phone ? ` • ${resident.phone}` : ""}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-xs">{res.name}</p>
-                      <p className="text-[11px] text-gray-500">{res.apt} • {res.phone}</p>
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${resident.verified ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800"}`}>{resident.verified ? "Подтверждён" : "Не подтверждён"}</span>
+                      {canAssignRoles && resident.membershipId && resident.userId !== currentUser.id ? (
+                        <>
+                          <select
+                            value={resident.role}
+                            disabled={residentBusy === resident.userId}
+                            onChange={(event) => void changeRole(resident, event.target.value)}
+                            className="rounded-xl border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-bold text-gray-700"
+                            aria-label={`Роль ${resident.fullName}`}
+                          >
+                            {Object.entries(roleLabels).filter(([role]) => role !== "admin" || currentUser.membershipRole === "admin" || resident.role === "admin").map(([role, label]) => <option key={role} value={role}>{label}</option>)}
+                          </select>
+                          {resident.verified && <button type="button" disabled={residentBusy === resident.userId} onClick={() => void revokeAccess(resident)} className="rounded-xl px-2 py-1.5 text-[11px] font-bold text-red-700 hover:bg-red-50">Выехал</button>}
+                        </>
+                      ) : (
+                        <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-[11px] font-bold">{roleLabels[resident.role] || resident.role}</span>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-[11px] font-bold">
-                      {res.role}
-                    </span>
-                    <span className={`w-2 h-2 rounded-full ${res.verified ? "bg-green-500" : "bg-amber-400"}`} />
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
+
+        {activeTab === "content" && <ContentManager />}
+        {activeTab === "invites" && <InviteManager />}
 
         {/* Вкладка 3: Экстренное оповещение */}
         {activeTab === "alert" && (
@@ -338,7 +467,7 @@ export default function AdminPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSaveAlert} className="space-y-4 bg-white p-5 border border-gray-200 rounded-3xl shadow-xs">
+            <form onSubmit={(event) => void handleSaveAlert(event)} className="space-y-4 bg-white p-5 border border-gray-200 rounded-3xl shadow-xs">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   Заголовок оповещения
@@ -367,17 +496,35 @@ export default function AdminPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Затронутые зоны (через запятую)</label>
+                <input value={alertAreas} onChange={(e) => setAlertAreas(e.target.value)} placeholder="Дом 1, подъезд 2; паркинг" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Ожидаемое восстановление</label>
+                  <input value={alertResolution} onChange={(e) => setAlertResolution(e.target.value)} placeholder="Сегодня к 18:00" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Контактный телефон</label>
+                  <input value={alertPhone} onChange={(e) => setAlertPhone(e.target.value)} placeholder="+7 ..." className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500" />
+                </div>
+              </div>
+              {alertStatus && <p role={alertStatus.tone === "error" ? "alert" : "status"} className={`rounded-xl p-3 text-xs font-semibold ${alertStatus.tone === "error" ? "bg-red-50 text-red-700" : "bg-green-50 text-green-800"}`}>{alertStatus.text}</p>}
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md transition"
+                  disabled={alertBusy}
+                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50"
                 >
                   Опубликовать экстренное оповещение
                 </button>
                 {urgentAlert && (
                   <button
                     type="button"
-                    onClick={handleDisableAlert}
+                    disabled={alertBusy}
+                    onClick={() => void handleDisableAlert()}
                     className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition"
                   >
                     Снять оповещение

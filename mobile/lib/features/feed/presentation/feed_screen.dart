@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/data/house_repository.dart';
@@ -21,6 +22,7 @@ class _FeedScreenState extends State<FeedScreen> {
   String selectedType = 'all';
   bool isLoading = false;
   bool hasError = false;
+  bool isUnverified = false;
   bool isOffline = false;
   bool notificationsError = false;
   List<Post> posts = <Post>[];
@@ -85,9 +87,12 @@ class _FeedScreenState extends State<FeedScreen> {
     });
     try {
       final remotePosts = await repository.loadPosts();
+      // До подтверждения проживания сервер не отдаёт ленту — объясняем почему.
+      final profile = await repository.loadProfile();
       if (!mounted) return;
       setState(() {
         posts = remotePosts;
+        isUnverified = profile != null && profile['verified'] != true;
         isLoading = false;
       });
     } catch (_) {
@@ -390,6 +395,17 @@ class _FeedScreenState extends State<FeedScreen> {
                       ? ListView.builder(
                           itemCount: 4,
                           itemBuilder: (_, __) => const PostSkeleton())
+                      : isUnverified
+                          ? SingleChildScrollView(
+                              child: EmptyState(
+                                icon: Icons.verified_user_outlined,
+                                title: 'Подтвердите проживание',
+                                subtitle:
+                                    'Лента, чаты и данные дома откроются после подтверждения. Введите код от ОСИ в профиле.',
+                                actionLabel: 'Открыть профиль',
+                                onAction: () => context.go('/profile'),
+                              ),
+                            )
                       : filtered.isEmpty
                           ? SingleChildScrollView(
                               child: EmptyState(

@@ -4,6 +4,33 @@ import { discardPlatformAction, flushPlatformQueue, getPendingPlatformActions, r
 import { useOperationsStore } from "@/stores/operationsStore";
 import { useAppStore } from "@/stores/appStore";
 
+const ACTION_LABELS: Record<string, string> = {
+  access_passes: "Пропуск",
+  parking_bookings: "Бронь парковки",
+  book_guest_parking: "Бронь парковки",
+  parking_reports: "Жалоба на парковку",
+  work_order_checklist_items: "Пункт чек-листа работ",
+  work_ratings: "Оценка работ",
+  marketplace_favorites: "Избранное объявление",
+  classifieds: "Объявление",
+  marketplace_reports: "Жалоба на объявление",
+  marketplace_reviews: "Отзыв на объявление",
+  notification_preferences: "Настройки уведомлений",
+  notification_preference_events: "Настройки уведомлений",
+  complex_settings: "Настройки ЖК",
+  sos_incidents: "SOS-вызов",
+  family_invitations: "Приглашение семьи",
+  ai_feedback: "Оценка ответа AI",
+  notification_broadcasts: "Рассылка",
+  switch_active_membership: "Смена ЖК",
+  merge_service_requests: "Объединение заявок",
+};
+const OPERATION_LABELS: Record<string, string> = { insert: "создание", upsert: "сохранение", update: "изменение", delete: "удаление", rpc: "действие" };
+
+function describeAction(table: string, operation: string) {
+  return `${ACTION_LABELS[table] || "Действие"} · ${OPERATION_LABELS[operation] || operation}`;
+}
+
 export default function SyncPage() {
   const [items, setItems] = useState<PendingMutation[]>(() => {
     try { return getPendingPlatformActions(); } catch { return []; }
@@ -34,7 +61,7 @@ export default function SyncPage() {
     {error && <p role="alert" className="text-red-800">{error}</p>}
     {items.length === 0 && <p>Все действия отправлены.</p>}
     {items.map((item) => <article key={item.id} className="space-y-3 rounded-2xl border border-stone-300 p-4">
-      <h2 className="font-bold">{item.mutation.table} · {item.mutation.operation}</h2>
+      <h2 className="font-bold">{describeAction(item.mutation.table, item.mutation.operation)}</h2>
       <p className="text-sm">{new Date(item.createdAt).toLocaleString("ru-RU")} · Попыток: {item.attempts}</p>
       <p>{item.status === "blocked" ? "Нужна проверка" : "Ожидает отправки"}</p>
       {item.error && <p className="text-sm text-red-800">{item.error}</p>}

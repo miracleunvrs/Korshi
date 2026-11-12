@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/data/house_repository.dart';
+import '../../../core/data/media_limits.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -23,6 +25,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String avatarUrl = '';
   String? activeModal;
   bool hasError = false;
+  // Последняя заявка на подтверждение документами: pending / rejected / approved.
+  String? requestStatus;
+  String? requestReason;
 
   @override
   void initState() {
@@ -52,6 +57,285 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       if (mounted) setState(() => hasError = true);
     }
+    if (verified) return;
+    try {
+      final request = await _repository.loadLatestVerificationRequest();
+      if (!mounted) return;
+      setState(() {
+        requestStatus = request?['status']?.toString();
+        requestReason = request?['review_reason']?.toString();
+      });
+    } catch (_) {
+      // Статус заявки необязателен для экрана профиля.
+    }
+  }
+
+  String get _unverifiedHint {
+    if (requestStatus == 'pending') {
+      return 'Документы на проверке у управления ЖК';
+    }
+    if (requestStatus == 'rejected') {
+      final reason = requestReason?.trim() ?? '';
+      return reason.isEmpty
+          ? 'Заявка отклонена. Отправьте документы повторно'
+          : 'Заявка отклонена: $reason';
+    }
+    return 'Введите код от ОСИ или отправьте документы';
+  }
+
+  void _openDocumentSheet() {
+    final buildingCtrl =
+        TextEditingController(text: building == '—' ? '' : building);
+    final entranceCtrl = TextEditingController();
+    final apartmentCtrl =
+        TextEditingController(text: apartment == '—' ? '' : apartment);
+    PlatformFile? document;
+    String? error;
+    var busy = false;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheetState) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        Future<void> pick() async {
+          final result = await FilePicker.platform.pickFiles(
+            withData: true,
+            type: FileType.custom,
+            allowedExtensions: allowedUploadExtensions.toList(),
+          );
+          final file = result?.files.single;
+          if (file == null || file.bytes == null) return;
+          final extension = file.extension?.toLowerCase() ?? '';
+          setSheetState(() {
+            if (file.size > maxUploadBytes ||
+                !allowedUploadExtensions.contains(extension)) {
+              error = 'Поддерживаются файлы JPG, PNG, WEBP и PDF до 10 МБ';
+              document = null;
+            } else {
+              error = null;
+              document = file;
+            }
+          });
+        }
+
+        Future<void> submit() async {
+          final entrance = int.tryParse(entranceCtrl.text.trim()) ?? 0;
+          if (buildingCtrl.text.trim().isEmpty ||
+              apartmentCtrl.text.trim().isEmpty ||
+              entrance <= 0) {
+            setSheetState(() => error = 'Укажите дом, подъезд и квартиру');
+            return;
+          }
+          final file = document;
+          if (file == null) {
+            setSheetState(() => error = 'Выберите документ');
+            return;
+          }
+          setSheetState(() {
+            busy = true;
+            error = null;
+          });
+          try {
+            await _repository.submitVerificationDocument(
+              fullName: fullName,
+              phone: phone,
+              buildingNumber: buildingCtrl.text.trim(),
+              entranceNumber: entrance,
+              apartmentNumber: apartmentCtrl.text.trim(),
+              fileName: file.name,
+              bytes: file.bytes!,
+            );
+            if (ctx.mounted) Navigator.pop(ctx);
+            if (mounted) {
+              setState(() {
+                requestStatus = 'pending';
+                requestReason = null;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Документы отправлены управлению ЖК')));
+            }
+          } catch (cause) {
+            final message = '$cause';
+            setSheetState(() => error = message.contains('уже есть заявка')
+                ? 'У вас уже есть заявка на проверке. Дождитесь решения управления.'
+                : 'Не удалось отправить документы. Попробуйте ещё раз.');
+          } finally {
+            if (ctx.mounted) setSheetState(() => busy = false);
+          }
+        }
+
+        InputDecoration field(String label) => InputDecoration(
+              labelText: label,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            );
+
+        return Container(
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Документы на проверку',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  const Text(
+                      'Договор аренды или справка о правах на недвижимость (eGov). Документ увидит только управление вашего ЖК.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  const SizedBox(height: 12),
+                  TextField(controller: buildingCtrl, decoration: field('Дом')),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(
+                        child: TextField(
+                            controller: entranceCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: field('Подъезд'))),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: TextField(
+                            controller: apartmentCtrl,
+                            decoration: field('Квартира'))),
+                  ]),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : pick,
+                    icon: const Icon(Icons.attach_file, size: 18),
+                    label: Text(document?.name ?? 'Выбрать документ',
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(error!,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFFB91C1C))),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: busy ? null : submit,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      child: Text(busy ? 'Отправляем…' : 'Отправить'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  static const _inviteErrors = {
+    'invalid': 'Код не найден. Проверьте, что он введён без ошибок.',
+    'used': 'Этот код уже использован. Попросите в ОСИ новый.',
+    'expired': 'Срок действия кода истёк. Попросите в ОСИ новый.',
+    'rate_limited': 'Слишком много попыток. Попробуйте через час.',
+    'unauthorized': 'Войдите в аккаунт и повторите попытку.',
+  };
+
+  void _openInviteSheet() {
+    final codeCtrl = TextEditingController();
+    String? error;
+    var busy = false;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheetState) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        Future<void> redeem() async {
+          if (codeCtrl.text.trim().isEmpty) return;
+          setSheetState(() {
+            busy = true;
+            error = null;
+          });
+          try {
+            final status =
+                await _repository.redeemApartmentInvite(codeCtrl.text.trim());
+            if (status == 'ok') {
+              if (ctx.mounted) Navigator.pop(ctx);
+              await _loadRemoteProfile();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Проживание подтверждено')));
+              }
+              return;
+            }
+            setSheetState(() =>
+                error = _inviteErrors[status] ?? 'Не удалось проверить код');
+          } catch (_) {
+            setSheetState(() => error = 'Не удалось проверить код');
+          } finally {
+            if (ctx.mounted) setSheetState(() => busy = false);
+          }
+        }
+
+        return Container(
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Код от ОСИ',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  const Text(
+                      'Введите код из записки или письма управления — доступ к дому откроется сразу. Без кода отправьте документы на проверку из меню профиля.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: codeCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      hintText: 'Например, K7M2Q9XWPA',
+                      errorText: error,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onSubmitted: (_) => redeem(),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: busy ? null : redeem,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      child: Text(busy ? 'Проверяем…' : 'Подтвердить'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
+    );
   }
 
   Future<void> _signOut() async {
@@ -62,8 +346,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _openEdit() {
     final nameCtrl = TextEditingController(text: fullName);
     final phoneCtrl = TextEditingController(text: phone);
-    final buildingCtrl = TextEditingController(text: building);
-    final apartmentCtrl = TextEditingController(text: apartment);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -103,17 +385,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: phoneCtrl,
                       keyboardType: TextInputType.phone),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                          child:
-                              _Field(label: 'Дом №', controller: buildingCtrl)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _Field(
-                              label: 'Квартира №', controller: apartmentCtrl)),
-                    ],
-                  ),
+                  const Text(
+                      'Адрес меняется через подтверждение проживания: управление ЖК проверит новый адрес.',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
@@ -122,8 +396,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         setState(() {
                           fullName = nameCtrl.text;
                           phone = phoneCtrl.text;
-                          building = buildingCtrl.text;
-                          apartment = apartmentCtrl.text;
                         });
                         try {
                           await _repository.updateProfile(
@@ -208,16 +480,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String _modalTitle(String id) {
     switch (id) {
-      case 'announcements':
-        return 'Мои объявления';
-      case 'services':
-        return 'Мои услуги мастера';
-      case 'initiatives':
-        return 'Мои инициативы';
       case 'payments':
         return 'История взносов';
       case 'notifications':
-        return 'Настройки уведомлений';
+        return 'Уведомления';
       default:
         return id;
     }
@@ -398,26 +664,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           border: Border.all(color: const Color(0xFFFDE68A))),
                       child: Row(
                         children: [
-                          const Expanded(
+                          Expanded(
                               child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                Text('Статус жителя не подтверждён',
+                                const Text('Статус жителя не подтверждён',
                                     style: TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                         color: Color(0xFF92400E))),
-                                Text('Загрузите документ для полного доступа',
-                                    style: TextStyle(
+                                Text(_unverifiedHint,
+                                    style: const TextStyle(
                                         fontSize: 11, color: Color(0xFFB45309)))
                               ])),
                           FilledButton(
-                              onPressed: () =>
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'Откройте веб-версию для загрузки документа')),
-                                  ),
+                              onPressed: _openInviteSheet,
                               style: FilledButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   shape: RoundedRectangleBorder(
@@ -443,29 +704,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     : const Color(0xFFF1F5F9)))),
                     child: Column(
                       children: [
-                        _MenuRow(
-                            icon: Icons.verified_user_outlined,
-                            label: 'Подтверждение жителя',
-                            onTap: () => _openModal('verify')),
+                        if (!verified)
+                          _MenuRow(
+                              icon: Icons.verified_user_outlined,
+                              label: 'Ввести код от ОСИ',
+                              onTap: _openInviteSheet),
+                        if (!verified && requestStatus != 'pending')
+                          _MenuRow(
+                              icon: Icons.upload_file_outlined,
+                              label: 'Отправить документы',
+                              onTap: _openDocumentSheet),
                         _MenuRow(
                             icon: Icons.sell_outlined,
-                            label: 'Мои объявления',
-                            onTap: () => _openModal('announcements')),
-                        _MenuRow(
-                            icon: Icons.build_outlined,
-                            label: 'Мои услуги и профиль мастера',
-                            onTap: () => _openModal('services')),
-                        _MenuRow(
-                            icon: Icons.lightbulb_outline,
-                            label: 'Мои инициативы',
-                            onTap: () => _openModal('initiatives')),
+                            label: 'Объявления и услуги',
+                            onTap: () => context.go('/classifieds')),
                         _MenuRow(
                             icon: Icons.credit_card_outlined,
                             label: 'История платежей и сборов',
                             onTap: () => _openModal('payments')),
                         _MenuRow(
                             icon: Icons.notifications_outlined,
-                            label: 'Настройки уведомлений',
+                            label: 'Какие уведомления приходят',
                             onTap: () => _openModal('notifications'),
                             showDivider: false),
                       ],
@@ -504,47 +763,20 @@ class _ModalBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (id == 'payments') {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(12)),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text('Благоустройство двора',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                Text('15 мая 2026',
-                    style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-              ],
-            ),
-            const Text('+ 5 000 ₸',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF15803D))),
-          ],
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'История личных взносов пока не подключена. Для уточнения оплаты обратитесь в управление ЖК.',
+          textAlign: TextAlign.center,
         ),
       );
     }
-    if (id == 'notifications') {
-      return Column(
-        children: const [
-          _SwitchRow(label: 'Уведомления ОСИ', value: true),
-          _SwitchRow(label: 'Чат дома и подъезда', value: true),
-          _SwitchRow(label: 'Новые опросы', value: true),
-        ],
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text('Раздел "$id" активен и привязан к вашему профилю ЖК.',
-          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-          textAlign: TextAlign.center),
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
+      child: Text(
+        'В приложение приходят: статусы ваших заявок, аварийные сообщения, документы и рассылки ОСИ, подтверждение взносов и личные сообщения. В общих чатах показывается счётчик непрочитанного. Push-уведомления пока не подключены.',
+        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+      ),
     );
   }
 }
@@ -645,22 +877,6 @@ class _Field extends StatelessWidget {
           style: const TextStyle(fontSize: 13),
         ),
       ],
-    );
-  }
-}
-
-class _SwitchRow extends StatelessWidget {
-  final String label;
-  final bool value;
-  const _SwitchRow({required this.label, required this.value});
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(label, style: const TextStyle(fontSize: 13)),
-        Switch(value: value, onChanged: (_) {}, activeColor: AppColors.primary)
-      ]),
     );
   }
 }

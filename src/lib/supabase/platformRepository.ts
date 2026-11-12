@@ -16,6 +16,27 @@ let activeScope: { userId: string; complexId: string } | null = null;
 let flushing: Promise<{ synced: number; pending: number }> | null = null;
 
 export function clearPlatformScope() { activeScope = null; }
+/**
+ * Блокирует отложенные действия текущего пользователя, привязанные к другому
+ * ЖК. Вызывается после переключения активного объекта: молчаливое выполнение
+ * со старым контекстом запрещено, сервер такие операции всё равно отклонит.
+ * Возвращает число заблокированных действий.
+ */
+export function quarantineStaleScopeActions() {
+  if (typeof window === "undefined" || !activeScope) return 0;
+  const { userId, complexId } = activeScope;
+  const queue = readQueue();
+  let quarantined = 0;
+  const next = queue.map((item) => {
+    if (item.userId === userId && item.complexId !== complexId && item.status === "pending") {
+      quarantined++;
+      return { ...item, status: "blocked" as const, error: "Активный ЖК изменён. Проверьте действие и отправьте его заново." };
+    }
+    return item;
+  });
+  if (quarantined) writeQueue(next);
+  return quarantined;
+}
 function readQueue(): PendingMutation[] {
   if (typeof window === "undefined") return [];
   const raw = window.localStorage.getItem(QUEUE_KEY);
@@ -57,7 +78,8 @@ export async function loadPlatformSnapshot() {
   if (!authData.user) throw new Error("Требуется авторизация");
   const context = await supabase.rpc("auth_user_complex_id");
   if (context.error) throw context.error;
-  if (!context.data) throw new Error("Профиль не привязан к ЖК");
+  // До подтверждения проживания контекста ЖК нет и загружать нечего.
+  if (!context.data) return null;
   activeScope = { userId: authData.user.id, complexId: context.data };
 
   const queries = await Promise.all([
@@ -66,10 +88,7 @@ export async function loadPlatformSnapshot() {
     supabase.from("access_events").select("*").order("occurred_at", { ascending: false }).limit(100),
     supabase.from("parking_spots").select("*").order("label"),
     supabase.from("parking_bookings").select("*").order("starts_at", { ascending: false }),
-    supabase.from("work_orders").select("*, checklist:work_order_checklist_items(*), attachments:work_order_attachments(*)").order("starts_at", { ascending: false }),
-    supabase.from("community_events").select("*, rsvps:community_event_rsvps(user_id,choice), albums:community_event_albums(id)").order("starts_at"),
-    supabase.from("community_clubs").select("*, members:community_club_members(user_id)").order("name"),
-    supabase.from("community_notices").select("*").order("created_at", { ascending: false }),
+    supabase.from("work_orders").select("*, checklist:work_order_checklist_items(*), attachments:work_order_attachments(*), ratings:work_ratings(user_id,rating)").order("starts_at", { ascending: false }),
     supabase.from("marketplace_favorites").select("classified_id"),
     supabase.from("marketplace_reviews").select("*, author:profiles(full_name)").order("created_at", { ascending: false }),
     supabase.from("complex_settings").select("*").maybeSingle(),
@@ -81,25 +100,36 @@ export async function loadPlatformSnapshot() {
   return {
     userId: authData.user.id as string,
     memberships: queries[0].data, passes: queries[1].data, accessEvents: queries[2].data, parkingSpots: queries[3].data,
-    parkingBookings: queries[4].data, works: queries[5].data, events: queries[6].data, clubs: queries[7].data, notices: queries[8].data,
-    favorites: queries[9].data, reviews: queries[10].data, complexSettings: queries[11].data, notificationPreferences: queries[12].data,
+    parkingBookings: queries[4].data, works: queries[5].data,
+    favorites: queries[6].data, reviews: queries[7].data, complexSettings: queries[8].data, notificationPreferences: queries[9].data,
   };
 }
 
 export async function syncPlatformMutation(mutation: PlatformMutation) {
   if (isDemoMode()) return { queued: false, demo: true, data: null as Json };
   requireBackend();
+  const isSos = mutation.table === "sos_incidents";
+  if (isSos && !navigator.onLine) throw new Error("Нет связи: SOS не отправлен. При опасности звоните 112.");
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Требуется авторизация");
   if (!activeScope || activeScope.userId !== session.user.id) {
     const { data, error } = await supabase.rpc("auth_user_complex_id");
     if (error) throw error;
-    if (!data) throw new Error("Профиль не привязан к ЖК");
+    if (!data) throw new Error("Действие станет доступно после подтверждения проживания");
     activeScope = { userId: session.user.id, complexId: data };
   }
   const item: PendingMutation = { id: crypto.randomUUID(), ...activeScope, mutation,
     createdAt: new Date().toISOString(), attempts: 0, status: "pending", nextAttemptAt: 0 };
+  // Emergency intent must never be replayed later as if it were a fresh incident.
+  if (isSos) {
+    try {
+      const data = await executeMutation(item);
+      return { queued: false, demo: false, data };
+    } catch {
+      throw new Error("Нет подтверждения регистрации SOS. Сигнал не будет отправлен автоматически позже. При опасности звоните 112.");
+    }
+  }
   // Save before transmission: a lost response must not cause a second server operation.
   writeQueue(enqueue(readQueue(), item));
   if (!navigator.onLine) return { queued: true, demo: false, data: null as Json };
@@ -131,6 +161,11 @@ async function flush() {
   for (const item of getPendingPlatformActions()) {
     if (item.status !== "pending" || item.nextAttemptAt > Date.now()) continue;
     if (scope.userId !== activeScope?.userId || scope.complexId !== activeScope?.complexId) break;
+    if (item.mutation.table === "sos_incidents") {
+      writeQueue(readQueue().map((entry) => entry.id === item.id
+        ? { ...entry, status: "blocked", error: "Отложенная отправка SOS отключена. При опасности звоните 112." } : entry));
+      continue;
+    }
     try {
       await executeMutation(item);
       writeQueue(readQueue().filter((entry) => entry.id !== item.id));

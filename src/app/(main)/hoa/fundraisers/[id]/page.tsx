@@ -3,15 +3,26 @@
 import { useState, use, useEffect } from "react";
 import Link from "next/link";
 import NextImage from "next/image";
-import { ArrowLeft, CheckCircle2, QrCode, X, Heart, ShieldCheck, Share2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, ExternalLink, X, ShieldCheck, Share2, XCircle } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { reviewFundraiserPayment } from "@/lib/supabase/repository";
 import { complexName } from "@/lib/appConfig";
+
+type PaymentStatus = "pending" | "confirmed" | "rejected";
+type PaymentRow = { id: string; name: string; date: string; amount: number; status: PaymentStatus; mine: boolean };
+
+const paymentStatusMeta: Record<PaymentStatus, { label: string; tone: string; icon: typeof CheckCircle2 }> = {
+  confirmed: { label: "Подтверждён ОСИ", tone: "text-green-700", icon: CheckCircle2 },
+  pending: { label: "Ждёт проверки ОСИ", tone: "text-amber-700", icon: Clock3 },
+  rejected: { label: "Не найден в поступлениях", tone: "text-red-700", icon: XCircle },
+};
 
 export default function FundraiserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { donateToFundraiser, posts, currentUser } = useAppStore();
+  const { donateToFundraiser, posts, currentUser, hydrateDomainData } = useAppStore();
+  const canManage = currentUser.role === "admin" || currentUser.role === "hoa_official";
   const [renderedAt] = useState(() => Date.now());
   const fundraiserPost = posts.find((post) => post.fundraiser?.id === id);
   const fundraiser = fundraiserPost?.fundraiser;
@@ -22,33 +33,40 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
   const remainingDays = fundraiser?.ends_at
     ? Math.max(0, Math.ceil((new Date(fundraiser.ends_at).getTime() - renderedAt) / 86_400_000))
     : null;
+  const isOpen = fundraiser?.status === "active" && (remainingDays === null || remainingDays > 0);
 
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
   const [donateAmount, setDonateAmount] = useState("5000");
-  const [isPaid, setIsPaid] = useState(false);
+  const [anonymous, setAnonymous] = useState(false);
+  const [isDeclared, setIsDeclared] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
-  const [payments, setPayments] = useState<Array<{ id: string; name: string; date: string; amount: number; status: string }>>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [paymentsVersion, setPaymentsVersion] = useState(0);
+  const fundraiserRowId = fundraiser?.id;
 
   useEffect(() => {
-    if (!isSupabaseConfigured() || !fundraiser) return;
+    if (!isSupabaseConfigured() || !fundraiserRowId) return;
     void (async () => {
-      const { data, error } = await (createClient() as any)
-        .from("fundraiser_payments")
-        .select("id, amount, confirmed_at, is_anonymous, user:profiles(full_name)")
-        .eq("fundraiser_id", fundraiser.id)
-        .order("confirmed_at", { ascending: false });
-      if (error) return;
-      setPayments((data || []).map((payment: any) => ({
-        id: payment.id,
-        name: payment.is_anonymous ? "Анонимный житель" : payment.user?.full_name || "Житель ЖК",
-        date: new Date(payment.confirmed_at).toLocaleDateString("ru-RU"),
-        amount: Number(payment.amount),
-        status: "Оплачено",
-      })));
+    const { data, error } = await (createClient() as any)
+      .from("fundraiser_payments")
+      .select("id, user_id, amount, status, created_at, is_anonymous, user:profiles(full_name)")
+      .eq("fundraiser_id", fundraiserRowId)
+      .order("created_at", { ascending: false });
+    if (error) return;
+    setPayments((data || []).map((payment: any) => ({
+      id: payment.id,
+      // Управление видит имя и у анонимного взноса: иначе перевод не сверить с выпиской.
+      name: payment.is_anonymous && !canManage ? "Анонимный житель" : `${payment.user?.full_name || "Житель ЖК"}${payment.is_anonymous ? " (анонимно)" : ""}`,
+      date: new Date(payment.created_at).toLocaleDateString("ru-RU"),
+      amount: Number(payment.amount),
+      status: payment.status as PaymentStatus,
+      mine: payment.user_id === currentUser.id,
+    })));
     })();
-  }, [fundraiser]);
+  }, [canManage, currentUser.id, fundraiserRowId, paymentsVersion]);
 
   if (!fundraiserPost || !fundraiser) {
     return (
@@ -59,7 +77,7 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
     );
   }
 
-  const handleDonate = async (e: React.FormEvent) => {
+  const handleDeclare = async (e: React.FormEvent) => {
     e.preventDefault();
     const sum = parseInt(donateAmount) || 0;
     if (sum <= 0) return;
@@ -67,16 +85,27 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
     setIsSubmitting(true);
     setPaymentError(null);
     try {
-      await donateToFundraiser(fundraiserId, sum);
-      setIsPaid(true);
-      setTimeout(() => {
-        setIsPaid(false);
-        setIsDonateModalOpen(false);
-      }, 1500);
+      await donateToFundraiser(fundraiserId, sum, { anonymous });
+      setIsDeclared(true);
+      setPaymentsVersion((version) => version + 1);
     } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : "Не удалось сохранить платёж");
+      setPaymentError(error instanceof Error ? error.message : "Не удалось отправить сообщение о переводе");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const review = async (paymentId: string, confirmed: boolean) => {
+    setReviewingId(paymentId);
+    setPaymentError(null);
+    try {
+      await reviewFundraiserPayment(paymentId, confirmed);
+      setPaymentsVersion((version) => version + 1);
+      await hydrateDomainData().catch(() => undefined);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Не удалось обновить взнос");
+    } finally {
+      setReviewingId(null);
     }
   };
 
@@ -159,77 +188,104 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
           )}
         </div>
 
-        {/* История платежей */}
+        {/* Взносы */}
         <div className="space-y-3">
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-            История платежей
+            Взносы
           </h3>
-
-          <div className="divide-y divide-gray-100 rounded-2xl border border-gray-100 overflow-hidden">
-            {payments.map((p) => (
-              <div key={p.id} className="p-3.5 flex items-center justify-between bg-white hover:bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-xs">
-                    {p.name.charAt(0)}
+          <p className="text-[11px] text-gray-500">В собранную сумму входят только переводы, поступление которых подтвердило ОСИ.</p>
+          {paymentError && !isDonateModalOpen && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{paymentError}</p>}
+          {payments.length === 0 ? (
+            <p className="rounded-2xl bg-gray-50 p-4 text-xs text-gray-500">Подтверждённых взносов пока нет.</p>
+          ) : (
+            <div className="divide-y divide-gray-100 rounded-2xl border border-gray-100 overflow-hidden">
+              {payments.map((p) => {
+                const meta = paymentStatusMeta[p.status];
+                const StatusIcon = meta.icon;
+                return (
+                  <div key={p.id} className="p-3.5 bg-white">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-xs">
+                          {p.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 text-xs">{p.mine ? `${p.name} · вы` : p.name}</p>
+                          <p className="text-[10px] text-gray-400">{p.date}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900 text-xs">{p.amount.toLocaleString("ru-RU")} ₸</p>
+                        <p className={`text-[10px] font-semibold flex items-center justify-end gap-0.5 ${meta.tone}`}>
+                          <StatusIcon className="w-2.5 h-2.5" /> {meta.label}
+                        </p>
+                      </div>
+                    </div>
+                    {canManage && p.status === "pending" && (
+                      <div className="mt-3 flex gap-2">
+                        <button type="button" disabled={reviewingId === p.id} onClick={() => void review(p.id, true)} className="flex-1 rounded-xl bg-green-700 px-3 py-2 text-[11px] font-bold text-white disabled:opacity-50">Поступление есть</button>
+                        <button type="button" disabled={reviewingId === p.id} onClick={() => void review(p.id, false)} className="flex-1 rounded-xl bg-gray-100 px-3 py-2 text-[11px] font-bold text-gray-700 disabled:opacity-50">Не найдено</button>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <p className="font-bold text-gray-900 text-xs">{p.name}</p>
-                    <p className="text-[10px] text-gray-400">{p.date}</p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <p className="font-bold text-gray-900 text-xs">
-                    {p.amount.toLocaleString("ru-RU")} ₸
-                  </p>
-                  <p className="text-[10px] font-semibold text-green-600 flex items-center justify-end gap-0.5">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> {p.status}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Платежи пока не подключаем: сбор и история доступны для просмотра. */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white/95 backdrop-blur-xl border-t border-gray-100">
-        <button
-          type="button"
-          disabled
-          className="w-full py-3.5 bg-gray-100 text-gray-500 font-bold text-sm rounded-2xl cursor-not-allowed"
-        >
-          Оплата будет подключена позже
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-4 bg-white/95 backdrop-blur-xl border-t border-gray-100 space-y-2">
+        {!isOpen ? (
+          <p className="text-center text-xs font-semibold text-gray-500">Сбор завершён</p>
+        ) : (
+          <>
+            {fundraiser.payment_url ? (
+              <a href={fundraiser.payment_url} target="_blank" rel="noreferrer" className="flex w-full items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-2xl">
+                <ExternalLink className="h-4 w-4" /> Перевести на счёт ОСИ
+              </a>
+            ) : (
+              <p className="text-center text-[11px] text-gray-500">Реквизиты для перевода указаны в описании сбора или у управления ЖК.</p>
+            )}
+            <button
+              type="button"
+              onClick={() => { setIsDeclared(false); setPaymentError(null); setIsDonateModalOpen(true); }}
+              className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold text-sm rounded-2xl"
+            >
+              Я перевёл(а) — сообщить ОСИ
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Модалка оплаты через Kaspi QR */}
       {isDonateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-4" role="dialog" aria-modal="true" aria-labelledby="declare-title">
           <div className="w-full max-w-sm bg-white rounded-3xl p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
             <div className="flex justify-between items-center pb-2 border-b border-gray-100">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-green-600" />
-                <h3 className="font-bold text-gray-900 text-sm">Официальный сбор ОСИ</h3>
+                <h3 id="declare-title" className="font-bold text-gray-900 text-sm">Сообщить о переводе</h3>
               </div>
-              <button onClick={() => setIsDonateModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setIsDonateModalOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="Закрыть">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {isPaid ? (
-              <div className="py-8 text-center space-y-2">
-                <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-8 h-8" />
+            {isDeclared ? (
+              <div className="py-6 text-center space-y-2">
+                <div className="w-14 h-14 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto">
+                  <Clock3 className="w-8 h-8" />
                 </div>
-                <h4 className="font-bold text-gray-900 text-base">Оплата успешно принята!</h4>
-                <p className="text-xs text-gray-500">Спасибо за ваш вклад в развитие ЖК!</p>
+                <h4 className="font-bold text-gray-900 text-base">Спасибо! Сообщение отправлено</h4>
+                <p className="text-xs text-gray-500">ОСИ «{complexName(currentUser.complexName)}» сверит поступление. Сумма появится в сборе после подтверждения, мы пришлём уведомление.</p>
+                <button type="button" onClick={() => setIsDonateModalOpen(false)} className="mt-2 rounded-xl bg-gray-100 px-4 py-2 text-xs font-bold text-gray-700">Закрыть</button>
               </div>
             ) : (
-              <form onSubmit={handleDonate} className="space-y-4">
+              <form onSubmit={handleDeclare} className="space-y-4">
+                <p className="text-xs leading-5 text-gray-600">Укажите сумму, которую вы уже перевели. Приложение не списывает деньги — ОСИ сверит перевод с выпиской.</p>
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">
-                    Сумма взноса (тенге, ₸)
+                    Сумма перевода (тенге, ₸)
                   </label>
                   <div className="grid grid-cols-3 gap-2 mb-2">
                     {["2000", "5000", "10000"].map((s) => (
@@ -249,31 +305,26 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
                   </div>
                   <input
                     type="number"
+                    min={1}
                     value={donateAmount}
                     onChange={(e) => setDonateAmount(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-green-500"
                     required
                   />
                 </div>
+                <label className="flex items-center gap-2 text-xs text-gray-700">
+                  <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} />
+                  Не показывать моё имя соседям
+                </label>
 
                 {paymentError && <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{paymentError}</p>}
-                {/* Внешний платёжный провайдер подключается отдельно; запись взноса проходит через защищённый RPC. */}
-                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shrink-0 font-black text-xs">
-                    Kaspi
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-red-900">Оплата через Kaspi Pay</p>
-                    <p className="text-[10px] text-red-600">Официальный расчётный счёт ОСИ «{complexName(currentUser.complexName)}»</p>
-                  </div>
-                </div>
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || !fundraiser}
-                  className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-xl shadow-md transition"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white font-bold text-sm rounded-xl shadow-md transition disabled:opacity-50"
                 >
-                  {isSubmitting ? "Сохраняем…" : `Оплатить ${parseInt(donateAmount || "0").toLocaleString("ru-RU")} ₸`}
+                  {isSubmitting ? "Отправляем…" : `Сообщить о переводе ${parseInt(donateAmount || "0").toLocaleString("ru-RU")} ₸`}
                 </button>
               </form>
             )}

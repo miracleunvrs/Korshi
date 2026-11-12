@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { ArrowUpRight, ClipboardPlus, Megaphone, MessageSquareText, Vote } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { activeVotes } from "@/features/dashboard/summary";
 
 export default function TodayOverview() {
   const requests = useAppStore((state) => state.serviceRequests);
   const notifications = useAppStore((state) => state.notifications);
+  const votes = useAppStore((state) => state.officialVotes);
   const activeRequests = requests.filter((item) => item.status !== "resolved" && item.status !== "closed");
   const unread = notifications.filter((item) => !item.isRead).length;
 
@@ -37,8 +39,8 @@ export default function TodayOverview() {
             <p className="mt-1 text-xs font-semibold text-emerald-100/75">заявки в работе</p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/8 p-3.5">
-            <p className="text-2xl font-black tabular-nums">1</p>
-            <p className="mt-1 text-xs font-semibold text-emerald-100/75">активное голосование</p>
+            <p className="text-2xl font-black tabular-nums">{activeVotes(votes).length}</p>
+            <p className="mt-1 text-xs font-semibold text-emerald-100/75">открытых голосований</p>
           </div>
           <div className="col-span-2 rounded-2xl border border-white/10 bg-white/8 p-3.5 sm:col-span-1">
             <p className="text-2xl font-black tabular-nums">{unread}</p>

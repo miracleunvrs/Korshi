@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -8,20 +9,18 @@ import {
   Clock3,
   DoorOpen,
   Dumbbell,
-  KeyRound,
   LoaderCircle,
   MapPin,
   Plus,
   Sparkles,
-  TicketCheck,
   Users,
   Wrench,
   X,
   Zap,
 } from "lucide-react";
-import { useAppStore, type VisitorPass } from "@/stores/appStore";
+import { useAppStore } from "@/stores/appStore";
 
-type Tab = "schedule" | "booking" | "passes" | "vehicles";
+type Tab = "schedule" | "booking" | "vehicles";
 const kindMeta = {
   cleaning: { label: "Уборка", icon: Sparkles, tone: "bg-green-100 text-green-800" },
   maintenance: { label: "Работы", icon: Wrench, tone: "bg-violet-100 text-violet-800" },
@@ -33,19 +32,14 @@ export default function ServicesPage() {
   const schedule = useAppStore((state) => state.scheduleItems);
   const resources = useAppStore((state) => state.amenityResources);
   const bookings = useAppStore((state) => state.amenityBookings);
-  const passes = useAppStore((state) => state.visitorPasses);
   const vehicles = useAppStore((state) => state.residentVehicles);
   const createBooking = useAppStore((state) => state.createAmenityBooking);
-  const createPass = useAppStore((state) => state.createVisitorPass);
   const addVehicle = useAppStore((state) => state.addResidentVehicle);
   const [tab, setTab] = useState<Tab>("schedule");
-  const [dialog, setDialog] = useState<"booking" | "pass" | "vehicle" | null>(null);
+  const [dialog, setDialog] = useState<"booking" | "vehicle" | null>(null);
   const [resourceId, setResourceId] = useState(resources[0]?.id || "");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [guestName, setGuestName] = useState("");
-  const [passKind, setPassKind] = useState<VisitorPass["kind"]>("guest");
-  const [validUntil, setValidUntil] = useState("");
   const [vehiclePlate, setVehiclePlate] = useState("");
   const [vehicleLabel, setVehicleLabel] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,11 +56,6 @@ export default function ServicesPage() {
     if (!resourceId || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)) { setError("Выберите объект и корректное время."); return; }
     void run(() => createBooking(resourceId, startsAt, endsAt), "booking");
   };
-  const submitPass = (event: FormEvent) => {
-    event.preventDefault();
-    if (guestName.trim().length < 2 || !validUntil) { setError("Укажите гостя и срок действия."); return; }
-    void run(() => createPass({ guestName: guestName.trim(), kind: passKind, vehiclePlate: vehiclePlate.trim() || undefined, validUntil }), "passes");
-  };
   const submitVehicle = (event: FormEvent) => {
     event.preventDefault();
     if (vehiclePlate.trim().length < 4) { setError("Введите государственный номер."); return; }
@@ -74,8 +63,8 @@ export default function ServicesPage() {
   };
 
   return <div className="min-h-screen bg-[#f8f7f2]">
-    <header className="border-b border-stone-200/80 px-4 py-5 sm:px-6 sm:py-7"><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-green-800">Повседневные сервисы</p><h1 className="mt-1 text-2xl font-black tracking-[-0.035em] text-stone-950 sm:text-3xl">Сервисы дома</h1><p className="mt-1 text-sm leading-6 text-stone-600">Работы, бронирования, гостевые пропуска и автомобили.</p><div className="mt-5 grid grid-cols-4 gap-1 rounded-2xl bg-stone-200/65 p-1" role="tablist">{([
-      ["schedule", "Календарь", CalendarDays], ["booking", "Бронь", DoorOpen], ["passes", "Пропуска", KeyRound], ["vehicles", "Авто", Car],
+    <header className="border-b border-stone-200/80 px-4 py-5 sm:px-6 sm:py-7"><p className="text-xs font-extrabold uppercase tracking-[0.16em] text-green-800">Повседневные сервисы</p><h1 className="mt-1 text-2xl font-black tracking-[-0.035em] text-stone-950 sm:text-3xl">Сервисы дома</h1><p className="mt-1 text-sm leading-6 text-stone-600">Работы, бронирования и автомобили. Гостевые пропуска — в разделе <Link href="/operations" className="font-bold text-green-800 underline">«Доступ и парковка»</Link>.</p><div className="mt-5 grid grid-cols-3 gap-1 rounded-2xl bg-stone-200/65 p-1" role="tablist">{([
+      ["schedule", "Календарь", CalendarDays], ["booking", "Бронь", DoorOpen], ["vehicles", "Авто", Car],
     ] as const).map(([id, label, Icon]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-extrabold transition sm:flex-row sm:text-xs ${tab === id ? "bg-white text-stone-950 shadow-sm" : "text-stone-500"}`}><Icon className="h-4 w-4" />{label}</button>)}</div></header>
 
     <section className="space-y-3 px-4 py-5 sm:px-6">
@@ -83,15 +72,13 @@ export default function ServicesPage() {
 
       {tab === "booking" && <><button onClick={() => { setError(""); setDialog("booking"); }} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-green-800 text-sm font-extrabold text-white hover:bg-green-900"><Plus className="h-4 w-4" />Новое бронирование</button><section className="grid gap-3 sm:grid-cols-2">{resources.map((resource) => <div key={resource.id} className="rounded-[22px] border border-stone-200 bg-white p-4"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-100 text-violet-800"><Dumbbell className="h-5 w-5" /></span><div className="mt-3 flex items-center justify-between gap-2"><h2 className="text-sm font-extrabold text-stone-950">{resource.name}</h2>{resource.requiresApproval && <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-extrabold text-amber-900">Подтверждает ОСИ</span>}</div><p className="mt-1 text-xs leading-5 text-stone-600">{resource.description}</p><p className="mt-2 text-[11px] font-bold text-stone-500">{resource.location}{resource.capacity ? ` · до ${resource.capacity} человек` : ""}</p>{resource.rules && <p className="mt-2 rounded-xl bg-stone-50 p-2 text-[10px] leading-4 text-stone-600">Правила: {resource.rules}</p>}<p className="mt-3 text-sm font-black text-green-800">{resource.price ? `${resource.price.toLocaleString("ru-RU")} ₸` : "Бесплатно"}</p></div>)}</section>{bookings.length > 0 && <section className="rounded-[22px] border border-emerald-200 bg-emerald-50 p-4"><h2 className="text-xs font-extrabold uppercase tracking-[0.1em] text-emerald-800">Мои бронирования</h2>{bookings.map((booking) => <div key={booking.id} className="mt-3 flex items-center gap-3"><CheckCircle2 className="h-5 w-5 text-emerald-700" /><div><p className="text-sm font-extrabold text-emerald-950">{bookingResources.get(booking.resourceId)?.name || "Объект ЖК"}</p><p className="text-xs text-emerald-800">{booking.startsAt} — {booking.endsAt}</p><p className="mt-1 text-[10px] font-bold text-emerald-700">Напоминание включено · {bookingResources.get(booking.resourceId)?.price ? "оплата после подтверждения" : "без оплаты"}</p></div></div>)}</section>}</>}
 
-      {tab === "passes" && <><button onClick={() => { setError(""); setDialog("pass"); }} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-violet-700 text-sm font-extrabold text-white hover:bg-violet-800"><Plus className="h-4 w-4" />Создать гостевой пропуск</button>{passes.map((pass) => <article key={pass.id} className="rounded-[24px] border border-violet-100 bg-white p-5"><div className="flex items-start justify-between gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-100 text-violet-800"><TicketCheck className="h-5 w-5" /></span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-extrabold text-emerald-800">Активен</span></div><p className="mt-4 text-xs font-semibold text-stone-500">{pass.kind === "courier" ? "Курьер" : pass.kind === "vehicle" ? "Гость на автомобиле" : "Гость"}</p><h2 className="mt-1 text-base font-extrabold text-stone-950">{pass.guestName}</h2>{pass.vehiclePlate && <p className="mt-1 text-xs font-bold text-stone-600">Авто: {pass.vehiclePlate}</p>}<div className="mt-4 rounded-2xl bg-stone-950 p-4 text-center text-white"><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">Код доступа</p><p className="mt-2 font-mono text-2xl font-black tracking-[0.18em]">{pass.accessCode}</p></div><p className="mt-3 text-center text-[11px] font-semibold text-stone-500">Действует до {pass.validUntil}</p></article>)}</>}
 
       {tab === "vehicles" && <><button onClick={() => { setError(""); setDialog("vehicle"); }} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 text-sm font-extrabold text-white hover:bg-stone-800"><Plus className="h-4 w-4" />Добавить автомобиль</button>{vehicles.map((vehicle) => <article key={vehicle.id} className="flex items-center gap-4 rounded-[22px] border border-stone-200 bg-white p-4"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-stone-100 text-stone-800"><Car className="h-5 w-5" /></span><div><p className="text-base font-black tracking-wide text-stone-950">{vehicle.plate}</p><p className="text-xs text-stone-500">{vehicle.label}</p></div></article>)}</>}
     </section>
 
-    {dialog && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/45 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true"><form onSubmit={dialog === "booking" ? submitBooking : dialog === "pass" ? submitPass : submitVehicle} className="sheet-enter w-full max-w-lg rounded-t-[30px] bg-white p-5 shadow-2xl sm:rounded-[30px] sm:p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-green-800">Сервисы дома</p><h2 className="mt-1 text-xl font-black text-stone-950">{dialog === "booking" ? "Новое бронирование" : dialog === "pass" ? "Гостевой пропуск" : "Добавить автомобиль"}</h2></div><button type="button" onClick={() => setDialog(null)} className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-100" aria-label="Закрыть"><X className="h-5 w-5" /></button></div>
-      {dialog === "booking" && <div className="mt-5 space-y-4"><label className="block text-sm font-extrabold text-stone-900">Объект<select value={resourceId} onChange={(event) => setResourceId(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm">{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label><label className="block text-sm font-extrabold text-stone-900">Начало<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label><label className="block text-sm font-extrabold text-stone-900">Окончание<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label></div>}
-      {dialog === "pass" && <div className="mt-5 space-y-4"><label className="block text-sm font-extrabold text-stone-900">Имя гостя<input value={guestName} onChange={(event) => setGuestName(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label><label className="block text-sm font-extrabold text-stone-900">Тип<select value={passKind} onChange={(event) => setPassKind(event.target.value as VisitorPass["kind"])} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm"><option value="guest">Гость</option><option value="courier">Курьер</option><option value="vehicle">Гость на автомобиле</option></select></label>{passKind === "vehicle" && <label className="block text-sm font-extrabold text-stone-900">Номер автомобиля<input value={vehiclePlate} onChange={(event) => setVehiclePlate(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm uppercase" /></label>}<label className="block text-sm font-extrabold text-stone-900">Действует до<input type="datetime-local" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label></div>}
+    {dialog && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/45 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true"><form onSubmit={dialog === "booking" ? submitBooking : submitVehicle} className="sheet-enter w-full max-w-lg rounded-t-[30px] bg-white p-5 shadow-2xl sm:rounded-[30px] sm:p-6"><div className="flex items-start justify-between"><div><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-green-800">Сервисы дома</p><h2 className="mt-1 text-xl font-black text-stone-950">{dialog === "booking" ? "Новое бронирование" : "Добавить автомобиль"}</h2></div><button type="button" onClick={() => setDialog(null)} className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-100" aria-label="Закрыть"><X className="h-5 w-5" /></button></div>
+      {dialog === "booking" && <div className="mt-5 space-y-4"><label className="block text-sm font-extrabold text-stone-900">Объект<select value={resourceId} onChange={(event) => setResourceId(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm"><option value="">Выберите объект</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label><label className="block text-sm font-extrabold text-stone-900">Начало<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label><label className="block text-sm font-extrabold text-stone-900">Окончание<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label></div>}
       {dialog === "vehicle" && <div className="mt-5 space-y-4"><label className="block text-sm font-extrabold text-stone-900">Государственный номер<input value={vehiclePlate} onChange={(event) => setVehiclePlate(event.target.value)} placeholder="777 ABC 02" className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm uppercase" /></label><label className="block text-sm font-extrabold text-stone-900">Описание<input value={vehicleLabel} onChange={(event) => setVehicleLabel(event.target.value)} placeholder="Белая Toyota" className="mt-2 min-h-12 w-full rounded-2xl border border-stone-200 px-4 text-sm" /></label></div>}
-      {error && <p role="alert" className="mt-4 rounded-2xl bg-rose-50 p-3 text-xs font-bold text-rose-800">{error}</p>}<button disabled={busy} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-green-800 text-sm font-extrabold text-white hover:bg-green-900 disabled:opacity-50">{busy && <LoaderCircle className="h-4 w-4 animate-spin" />}{dialog === "booking" ? "Забронировать" : dialog === "pass" ? "Создать код доступа" : "Сохранить автомобиль"}</button></form></div>}
+      {error && <p role="alert" className="mt-4 rounded-2xl bg-rose-50 p-3 text-xs font-bold text-rose-800">{error}</p>}<button disabled={busy} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-green-800 text-sm font-extrabold text-white hover:bg-green-900 disabled:opacity-50">{busy && <LoaderCircle className="h-4 w-4 animate-spin" />}{dialog === "booking" ? "Забронировать" : "Сохранить автомобиль"}</button></form></div>}
   </div>;
 }

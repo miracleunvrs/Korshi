@@ -2,13 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { isDemoMode, isSupabaseConfigured } from "@/lib/supabase/config";
 
+import { AI_TIMEOUT_MS, parseAiResult, readAiInput } from "@/features/ai/validation";
+
 export const runtime = "nodejs";
 
 const demoWindows = new Map<string, { count: number; resetAt: number }>();
-const allowedTasks = new Set(["request_triage", "image_analysis", "similar_requests"]);
 
-type AiTask = "request_triage" | "image_analysis" | "similar_requests";
-type AiResult = { title: string; answer: string; category: string | null; priority: string | null; suggested_duplicates: string[]; citations: string[]; needs_human_review: boolean };
+
 
 function demoLimited(key: string) {
   const now = Date.now();
@@ -22,6 +22,7 @@ function demoLimited(key: string) {
 }
 
 function extractOutputText(payload: Record<string, unknown>) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
   if (typeof payload.output_text === "string") return payload.output_text;
   const output = Array.isArray(payload.output) ? payload.output : [];
   for (const item of output) {
@@ -36,12 +37,10 @@ function extractOutputText(payload: Record<string, unknown>) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as null | { task?: string; prompt?: string; imageDataUrl?: string };
-  if (!body?.task || !allowedTasks.has(body.task) || !body.prompt?.trim()) return Response.json({ error: "Некорректный AI-запрос" }, { status: 400 });
-  if (body.prompt.length > 12_000) return Response.json({ error: "Текст длиннее 12 000 символов" }, { status: 413 });
-  if (body.imageDataUrl && (!body.imageDataUrl.startsWith("data:image/") || body.imageDataUrl.length > 7_000_000)) return Response.json({ error: "Изображение слишком большое или имеет неверный формат" }, { status: 413 });
-
-  const task = body.task as AiTask;
+  const input = await readAiInput(request);
+  if (!input.ok) return Response.json({ error: input.error }, { status: input.status });
+  const body = input.value;
+  const task = body.task;
   let userId = "demo-user";
   let jobId = "";
   let supabase: Awaited<ReturnType<typeof createClient>> | null = null;
@@ -92,13 +91,14 @@ export async function POST(request: Request) {
   try {
     upstream = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
         store: false,
         safety_identifier: createHash("sha256").update(userId).digest("hex").slice(0, 32),
         max_output_tokens: 700,
-        instructions: "Ты классификатор обращений жителей многоквартирного дома. Определи категорию и приоритет, либо найди похожие заявки только среди переданных источников. Не принимай решение за диспетчера. Для дублей возвращай только UUID из источников. Любой результат требует подтверждения человеком. Отвечай по-русски и верни JSON строго по схеме.",
+        instructions: "Ты классификатор обращений жителей многоквартирного дома. Определи категорию и приоритет, либо найди похожие заявки только среди переданных источников. Не принимай решение за диспетчера. Для suggested_duplicates и citations возвращай только UUID из переданных источников; если источников нет, верни пустые массивы. Любой результат требует подтверждения человеком. Отвечай по-русски и верни JSON строго по схеме.",
         input: [{ role: "user", content }],
         text: { format: { type: "json_schema", name: "korshi_request_triage", strict: true, schema: {
           type: "object", additionalProperties: false,
@@ -115,7 +115,11 @@ export async function POST(request: Request) {
         metadata: { feature: task },
       }),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      await failJob("provider_timeout");
+      return Response.json({ error: "AI не ответил вовремя. Попробуйте ещё раз.", jobId: jobId || null }, { status: 504 });
+    }
     await failJob("provider_network_error");
     return Response.json({ error: "AI-провайдер временно недоступен" }, { status: 502 });
   }
@@ -123,14 +127,12 @@ export async function POST(request: Request) {
   const payload = await upstream.json().catch(() => ({})) as Record<string, unknown>;
   if (!upstream.ok) {
     await failJob(`provider_http_${upstream.status}`);
-    return Response.json({ error: "AI-провайдер временно недоступен" }, { status: upstream.status });
+    // Статус провайдера (401/429 и т.п.) относится к серверному ключу, а не к сессии клиента.
+    return Response.json({ error: "AI-провайдер временно недоступен" }, { status: 502 });
   }
 
-  let result: AiResult;
-  try {
-    result = JSON.parse(extractOutputText(payload)) as AiResult;
-    result.needs_human_review = true;
-  } catch {
+  const result = parseAiResult(extractOutputText(payload), sources.map((source) => source.id));
+  if (!result) {
     await failJob("invalid_structured_output");
     return Response.json({ error: "AI вернул ответ в неожиданном формате" }, { status: 502 });
   }

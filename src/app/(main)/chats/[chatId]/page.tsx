@@ -1,17 +1,32 @@
 "use client";
 
-import { useState, useRef, useEffect, use, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, use, useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, Send, Paperclip, MoreVertical, ShieldCheck, CheckCheck } from "lucide-react";
+import NextImage from "next/image";
+import { ArrowLeft, Send, ShieldCheck, CheckCheck, FileText } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { CHAT_PAGE_SIZE, loadChatMessages, mergeChatMessages, type MessageCursor } from "@/features/chats/history";
+import type { MessageItem } from "@/types/app";
 
 export default function ChatRoomPage({ params }: { params: Promise<{ chatId: string }> }) {
   const resolvedParams = use(params);
   const chatId = resolvedParams.chatId;
+  return <ChatRoom key={chatId} chatId={chatId} />;
+}
 
-  const { chats, messages, sendMessage, deleteMessage, currentUser } = useAppStore();
+function ChatRoom({ chatId }: { chatId: string }) {
+
+  const { chats, messages, sendMessage, deleteMessage, markChatRead, currentUser } = useAppStore();
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<{ height: number; top: number } | null>(null);
+  const [history, setHistory] = useState<MessageItem[]>([]);
+  const [cursor, setCursor] = useState<MessageCursor>();
+  const [historyEnded, setHistoryEnded] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const loadingRef = useRef(false);
 
   const currentChat = chats.find((c) => c.id === chatId) || {
     id: chatId,
@@ -19,7 +34,37 @@ export default function ChatRoomPage({ params }: { params: Promise<{ chatId: str
     icon: "💬",
   };
 
-  const chatMessages = useMemo(() => messages[chatId] || [], [chatId, messages]);
+  const chatMessages = useMemo(() => mergeChatMessages(history, messages[chatId] || []), [history, chatId, messages]);
+  const newestId = chatMessages.at(-1)?.id;
+
+  const loadOlder = async () => {
+    if (loadingRef.current) return;
+    const first = cursor || chatMessages[0];
+    if (!first?.createdAt) return;
+    loadingRef.current = true;
+    setLoadingHistory(true);
+    setHistoryError("");
+    try {
+      const rows = await loadChatMessages(chatId, currentUser.id, { id: first.id, createdAt: first.createdAt });
+      const stream = streamRef.current;
+      if (stream) anchorRef.current = { height: stream.scrollHeight, top: stream.scrollTop };
+      setHistory(mergeChatMessages(rows, chatMessages));
+      setHistoryEnded(rows.length < CHAT_PAGE_SIZE);
+      if (rows[0]?.createdAt) setCursor({ id: rows[0].id, createdAt: rows[0].createdAt });
+    } catch {
+      setHistoryError("Не удалось загрузить историю. Попробуйте ещё раз.");
+    } finally {
+      loadingRef.current = false;
+      setLoadingHistory(false);
+    }
+  };
+
+  useLayoutEffect(() => {
+    const stream = streamRef.current;
+    const anchor = anchorRef.current;
+    if (stream && anchor) stream.scrollTop = anchor.top + stream.scrollHeight - anchor.height;
+    anchorRef.current = null;
+  }, [history]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -27,7 +72,13 @@ export default function ChatRoomPage({ params }: { params: Promise<{ chatId: str
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages]);
+  }, [newestId]);
+
+  // Открытый чат прочитан, в том числе когда в нём появляются новые сообщения.
+  const unread = chats.find((chat) => chat.id === chatId)?.unreadCount || 0;
+  useEffect(() => {
+    if (unread > 0) markChatRead(chatId);
+  }, [chatId, unread, markChatRead]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,19 +100,19 @@ export default function ChatRoomPage({ params }: { params: Promise<{ chatId: str
             <h2 className="font-bold text-gray-900 text-sm leading-tight">
               {currentChat.name}
             </h2>
-            <p className="text-[11px] text-green-600 font-medium flex items-center gap-1 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              Онлайн в ЖК
+            <p className="text-[11px] text-gray-500 font-medium mt-0.5">
+              {"type" in currentChat && currentChat.type === "direct" ? "Личный чат" : "Чат соседей"}
             </p>
           </div>
         </div>
-        <button className="text-gray-400 p-1.5 hover:bg-gray-100 rounded-full transition">
-          <MoreVertical className="w-4 h-4" />
-        </button>
+        <span className="w-7" />
       </div>
 
       {/* Message stream */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={streamRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {!historyEnded && chatMessages[0]?.createdAt && <button type="button" disabled={loadingHistory} onClick={() => void loadOlder()} className="block mx-auto rounded-xl bg-white px-4 py-3 text-sm text-green-800 disabled:opacity-50">{loadingHistory ? "Загрузка…" : "Более ранние сообщения"}</button>}
+        {historyError && <p role="alert" className="text-sm text-red-800">{historyError}</p>}
+        {historyEnded && <p className="text-center text-xs text-gray-600">Начало переписки</p>}
         {chatMessages.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-xs">
             Сообщений пока нет. Напишите первым!
@@ -90,7 +141,17 @@ export default function ChatRoomPage({ params }: { params: Promise<{ chatId: str
                   }`}
                 >
                   <div className="flex items-end gap-2">
-                    <p className="whitespace-pre-line">{m.text}</p>
+                    {m.kind === "image" && m.attachmentUrl ? (
+                      <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block">
+                        <NextImage src={m.attachmentUrl} alt="Фото из чата" width={240} height={180} unoptimized className="max-h-60 w-auto rounded-xl object-cover" />
+                      </a>
+                    ) : m.kind === "document" && m.attachmentUrl ? (
+                      <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 underline">
+                        <FileText className="h-4 w-4" /> Открыть документ
+                      </a>
+                    ) : (
+                      <p className="whitespace-pre-line">{m.text}</p>
+                    )}
                     {isMe && m.senderId === currentUser.id && (
                       <button
                         type="button"
@@ -122,13 +183,6 @@ export default function ChatRoomPage({ params }: { params: Promise<{ chatId: str
         onSubmit={handleSend}
         className="bg-white border-t border-gray-100 p-3 flex items-center gap-2 max-w-lg mx-auto w-full"
       >
-        <button
-          type="button"
-          className="text-gray-400 p-2 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
-          aria-label="Прикрепить"
-        >
-          <Paperclip className="w-5 h-5" />
-        </button>
         <input
           type="text"
           value={inputText}

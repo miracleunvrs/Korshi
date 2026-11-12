@@ -14,22 +14,24 @@ import {
   Vote,
   Wrench,
 } from "lucide-react";
-import { useAppStore, type AppNotification, type NotificationPreferenceKey } from "@/stores/appStore";
-import { useOperationsStore } from "@/stores/operationsStore";
+import { useAppStore, type AppNotification } from "@/stores/appStore";
 
-const preferenceRows: Array<{ key: NotificationPreferenceKey; title: string; description: string }> = [
-  { key: "requests", title: "Заявки", description: "Комментарии, исполнители и статусы" },
-  { key: "community", title: "Сообщество", description: "Объявления, чаты и голосования" },
-  { key: "finance", title: "Финансы", description: "Счета, сборы и новые отчёты" },
-  { key: "emergency", title: "Аварийные события", description: "Критичные сообщения дома" },
-];
+const deliveredEvents = [
+  ["Заявки", "Новые заявки, назначения, смена статуса и просьба оценить работу"],
+  ["Аварии", "Аварийные сообщения ОСИ и их обновления"],
+  ["Документы и решения ОСИ", "Новые документы, рассылки управления, подтверждение взносов"],
+  ["Личные сообщения", "Сообщения в личных чатах; в общих чатах — счётчик непрочитанного"],
+  ["Подтверждение проживания", "Решение управления по вашей заявке"],
+] as const;
 
 function notificationMeta(notification: AppNotification) {
   if (notification.type === "service_request") return { icon: Wrench, tone: "bg-green-100 text-green-800", href: "/requests" };
   if (notification.type === "message" || notification.type === "comment") return { icon: MessageSquareText, tone: "bg-sky-100 text-sky-800", href: typeof notification.data?.chat_id === "string" ? `/chats/${notification.data.chat_id}` : "/chats" };
-  if (notification.type === "vote") return { icon: Vote, tone: "bg-amber-100 text-amber-900", href: typeof notification.data?.post_id === "string" ? `/feed/${notification.data.post_id}` : "/hoa" };
+  if (notification.type === "vote") return { icon: Vote, tone: "bg-amber-100 text-amber-900", href: typeof notification.data?.post_id === "string" ? `/feed/${notification.data.post_id}` : "/votes" };
   if (notification.type === "document") return { icon: FileText, tone: "bg-violet-100 text-violet-800", href: "/documents" };
-  if (notification.type === "emergency") return { icon: ShieldAlert, tone: "bg-rose-100 text-rose-800", href: "/feed" };
+  if (notification.type === "emergency") return { icon: ShieldAlert, tone: "bg-rose-100 text-rose-800", href: "/emergency" };
+  if (notification.type === "verification") return { icon: ShieldAlert, tone: "bg-green-100 text-green-800", href: "/verify-resident" };
+  if (typeof notification.data?.fundraiser_id === "string") return { icon: Building2, tone: "bg-emerald-100 text-emerald-800", href: `/hoa/fundraisers/${notification.data.fundraiser_id}` };
   return { icon: Building2, tone: "bg-stone-100 text-stone-700", href: "/feed" };
 }
 
@@ -37,10 +39,6 @@ export default function NotificationsPage() {
   const notifications = useAppStore((state) => state.notifications);
   const markRead = useAppStore((state) => state.markNotificationRead);
   const markAllRead = useAppStore((state) => state.markAllNotificationsRead);
-  const preferences = useAppStore((state) => state.notificationPreferences);
-  const setPreference = useAppStore((state) => state.setNotificationPreference);
-  const channels = useOperationsStore((state) => state.notificationChannels);
-  const setChannel = useOperationsStore((state) => state.setNotificationChannel);
   const [tab, setTab] = useState<"all" | "unread" | "settings">("all");
   const [error, setError] = useState("");
   const unreadCount = notifications.filter((item) => !item.isRead).length;
@@ -71,15 +69,9 @@ export default function NotificationsPage() {
 
       <section className="px-4 py-5 sm:px-6">
         {tab === "settings" ? <section className="overflow-hidden rounded-[24px] border border-stone-200 bg-white" aria-labelledby="notification-settings-title">
-          <div className="border-b border-stone-100 p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-100 text-violet-800"><Settings2 className="h-5 w-5" /></span><div><h2 id="notification-settings-title" className="font-extrabold text-stone-950">Какие события показывать</h2><p className="text-xs leading-5 text-stone-500">Аварийные уведомления рекомендуется оставить включёнными.</p></div></div></div>
-          <div className="divide-y divide-stone-100">{preferenceRows.map((row) => <label key={row.key} className="flex min-h-[76px] cursor-pointer items-center justify-between gap-4 px-5 py-3 hover:bg-stone-50"><span><span className="block text-sm font-extrabold text-stone-900">{row.title}</span><span className="block text-xs leading-5 text-stone-500">{row.description}</span></span><Switch checked={preferences[row.key]} onChange={(enabled) => setPreference(row.key, enabled)} /></label>)}</div>
-          <div className="border-t border-stone-100 bg-stone-50/70 p-5"><h3 className="text-xs font-extrabold uppercase tracking-[.12em] text-stone-500">Каналы доставки</h3><div className="mt-3 space-y-3">{([
-            ["push", "Push для Web и Flutter", "Активируется после настройки OneSignal/FCM"],
-            ["voting", "Напоминания о голосованиях", "До завершения официального голосования"],
-            ["payments", "Напоминания о платежах", "Счета и задолженность только владельцу"],
-            ["emailCritical", "Email для критичных событий", "Нужен SMTP/API-провайдер"],
-            ["smsCritical", "SMS для критичных событий", "Нужен SMS-провайдер"],
-          ] as const).map(([key, title, description]) => <label key={key} className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-2xl bg-white px-4 py-3 ring-1 ring-stone-200"><span><span className="block text-xs font-extrabold text-stone-900">{title}</span><span className="mt-0.5 block text-[10px] leading-4 text-stone-500">{description}</span></span><Switch checked={channels[key]} onChange={(enabled) => void setChannel(key, enabled)} /></label>)}</div><p className="mt-3 text-[10px] leading-4 text-stone-500">Настройки сохраняются локально и в Supabase после применения миграций. Без ключей внешних провайдеров email/SMS/push не отправляются.</p></div>
+          <div className="border-b border-stone-100 p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-violet-100 text-violet-800"><Settings2 className="h-5 w-5" /></span><div><h2 id="notification-settings-title" className="font-extrabold text-stone-950">Что приходит в приложение</h2><p className="text-xs leading-5 text-stone-500">Уведомления видны здесь и в счётчике в меню.</p></div></div></div>
+          <ul className="divide-y divide-stone-100">{deliveredEvents.map(([title, description]) => <li key={title} className="px-5 py-3"><span className="block text-sm font-extrabold text-stone-900">{title}</span><span className="block text-xs leading-5 text-stone-500">{description}</span></li>)}</ul>
+          <p className="border-t border-stone-100 bg-stone-50/70 p-5 text-xs leading-5 text-stone-600">Push-уведомления, email и SMS пока не подключены. Чтобы не пропустить аварию, заглядывайте в приложение или включите уведомления браузера, когда они появятся.</p>
         </section> : visible.length === 0 ? <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-6 py-16 text-center"><Bell className="mx-auto h-9 w-9 text-stone-300" /><h2 className="mt-4 font-extrabold text-stone-900">Новых уведомлений нет</h2><p className="mt-1 text-sm text-stone-500">Всё важное уже просмотрено.</p></div> : <div className="space-y-2">{visible.map((notification, index) => {
           const meta = notificationMeta(notification);
           const Icon = meta.icon;
@@ -92,6 +84,3 @@ export default function NotificationsPage() {
   );
 }
 
-function Switch({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) {
-  return <span className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-green-700" : "bg-stone-300"}`}><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="sr-only" /><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} /></span>;
-}

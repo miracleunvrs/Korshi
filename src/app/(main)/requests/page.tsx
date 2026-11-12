@@ -39,6 +39,11 @@ import {
 } from "@/stores/appStore";
 import { REQUEST_UPLOAD_TYPES, validateUploadFile } from "@/lib/uploadLimits";
 import { syncPlatformMutation } from "@/lib/supabase/platformRepository";
+import { loadResidents } from "@/lib/supabase/repository";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+
+type Executor = { id: string; name: string };
+const SLA_OPTIONS = [{ hours: 4, label: "4 часа" }, { hours: 24, label: "Сутки" }, { hours: 72, label: "3 дня" }];
 
 const categories: Array<{ id: ServiceRequestCategory; label: string; icon: typeof Wrench }> = [
   { id: "utilities", label: "Вода и электричество", icon: Droplets },
@@ -70,6 +75,7 @@ const eventLabels: Record<ServiceRequestItem["events"][number]["kind"], string> 
   resolution: "Работа выполнена",
   rated: "Работа оценена",
   reopened: "Заявка открыта повторно",
+  merged: "Присоединена дублирующая заявка",
 };
 
 function RequestTimeline({ status }: { status: ServiceRequestStatus }) {
@@ -93,7 +99,22 @@ function RequestTimeline({ status }: { status: ServiceRequestStatus }) {
   );
 }
 
-function RequestCard({ request, index, canManage }: { request: ServiceRequestItem; index: number; canManage: boolean }) {
+function RequestCard({ request, index, isManagement, currentUserId, executors, mergeCandidates }: {
+  request: ServiceRequestItem;
+  index: number;
+  isManagement: boolean;
+  currentUserId: string;
+  executors: Executor[];
+  mergeCandidates: ServiceRequestItem[];
+}) {
+  // Исполнитель управляет только назначенными ему заявками; диспетчер и ОСИ — всеми.
+  const isAssignee = Boolean(request.assigneeId) && request.assigneeId === currentUserId;
+  const canManage = isManagement || isAssignee;
+  const isAuthor = request.userId === currentUserId;
+  const [assigneeId, setAssigneeId] = useState("");
+  const [slaHours, setSlaHours] = useState(24);
+  const [mergeTarget, setMergeTarget] = useState("");
+  const [mergeOpen, setMergeOpen] = useState(false);
   const addComment = useAppStore((state) => state.addServiceRequestComment);
   const rateRequest = useAppStore((state) => state.rateServiceRequest);
   const reopenRequest = useAppStore((state) => state.reopenServiceRequest);
@@ -120,13 +141,25 @@ function RequestCard({ request, index, canManage }: { request: ServiceRequestIte
   };
 
   const mergeDuplicate = async () => {
-    const duplicateId = window.prompt("ID дублирующей заявки");
-    if (!duplicateId?.trim()) return;
+    if (!mergeTarget) return;
     setBusy(true); setError("");
     try {
-      const result = await syncPlatformMutation({ operation: "rpc", table: "merge_service_requests", payload: { p_primary_id: request.id, p_duplicate_id: duplicateId.trim() } });
+      const result = await syncPlatformMutation({ operation: "rpc", table: "merge_service_requests", payload: { p_primary_id: request.id, p_duplicate_id: mergeTarget } });
       if (result.queued) setError("Связь с сервером недоступна: объединение поставлено в очередь");
+      else { setMergeOpen(false); setMergeTarget(""); }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось объединить заявки");
     } finally { setBusy(false); }
+  };
+
+  const accept = () => {
+    const executor = executors.find((item) => item.id === assigneeId);
+    void run(() => updateStatus(request.id, "in_progress", {
+      assigneeId: executor?.id,
+      assigneeName: executor?.name || "Служба эксплуатации",
+      slaDueAt: new Date(Date.now() + slaHours * 60 * 60 * 1000).toISOString(),
+      note: "Заявка принята в работу",
+    }));
   };
 
   const submitComment = (event: FormEvent) => {
@@ -184,9 +217,32 @@ function RequestCard({ request, index, canManage }: { request: ServiceRequestIte
           <ol className="mt-3 space-y-3">{request.events.map((event) => <li key={event.id} className="flex gap-3"><span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-green-700 ring-4 ring-green-100" /><div className="min-w-0"><div className="flex flex-wrap items-baseline gap-x-2"><p className="text-sm font-extrabold text-stone-900">{eventLabels[event.kind]}</p><span className="text-[11px] text-stone-400">{event.createdAt}</span></div><p className="text-xs font-semibold text-stone-500">{event.actorName}</p>{event.message && <p className="mt-1 text-sm leading-6 text-stone-600">{event.message}</p>}</div></li>)}</ol>
         </section>
 
-        {canManage && request.status !== "closed" && <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50 p-4"><p className="text-xs font-extrabold uppercase tracking-[0.1em] text-violet-800">{request.assigneeName ? "Кабинет исполнителя" : "Кабинет диспетчера"}</p><div className="mt-3 flex flex-wrap gap-2">{request.status === "submitted" && <button disabled={busy} onClick={() => void run(() => updateStatus(request.id, "in_progress", { assigneeName: "Служба эксплуатации", slaDueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), note: "Заявка принята в работу" }))} className="min-h-11 rounded-xl bg-violet-700 px-4 text-xs font-extrabold text-white hover:bg-violet-800 disabled:opacity-50">Принять в работу</button>}{request.status === "in_progress" && <button disabled={busy} onClick={() => void run(() => updateStatus(request.id, "resolved", { note: "Работа выполнена. Пожалуйста, подтвердите результат." }))} className="min-h-11 rounded-xl bg-green-800 px-4 text-xs font-extrabold text-white hover:bg-green-900 disabled:opacity-50">Отметить выполненной</button>}<button disabled={busy} onClick={() => void mergeDuplicate()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-xs font-extrabold text-violet-800 ring-1 ring-violet-200"><Merge className="h-4 w-4" />Объединить дубль</button></div></div>}
+        {canManage && request.status !== "closed" && <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50 p-4">
+          <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-violet-800">{isManagement ? "Кабинет диспетчера" : "Кабинет исполнителя"}</p>
+          {request.status === "submitted" && isManagement && <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} className="min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-stone-800" aria-label="Исполнитель">
+              <option value="">Служба эксплуатации</option>
+              {executors.map((executor) => <option key={executor.id} value={executor.id}>{executor.name}</option>)}
+            </select>
+            <select value={slaHours} onChange={(event) => setSlaHours(Number(event.target.value))} className="min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-stone-800" aria-label="Срок выполнения">
+              {SLA_OPTIONS.map((option) => <option key={option.hours} value={option.hours}>{option.label}</option>)}
+            </select>
+            <button disabled={busy} onClick={accept} className="min-h-11 rounded-xl bg-violet-700 px-4 text-xs font-extrabold text-white disabled:opacity-50">Принять в работу</button>
+          </div>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {request.status === "in_progress" && <button disabled={busy} onClick={() => void run(() => updateStatus(request.id, "resolved", { note: "Работа выполнена. Пожалуйста, подтвердите результат." }))} className="min-h-11 rounded-xl bg-green-800 px-4 text-xs font-extrabold text-white disabled:opacity-50">Отметить выполненной</button>}
+            {isManagement && mergeCandidates.length > 0 && <button disabled={busy} onClick={() => setMergeOpen((open) => !open)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-xs font-extrabold text-violet-800 ring-1 ring-violet-200"><Merge className="h-4 w-4" />Объединить дубль</button>}
+          </div>
+          {mergeOpen && <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <select value={mergeTarget} onChange={(event) => setMergeTarget(event.target.value)} className="min-h-11 flex-1 rounded-xl border border-violet-200 bg-white px-3 text-xs text-stone-800" aria-label="Дублирующая заявка">
+              <option value="">Выберите дублирующую заявку</option>
+              {mergeCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title} · {candidate.location}</option>)}
+            </select>
+            <button disabled={busy || !mergeTarget} onClick={() => void mergeDuplicate()} className="min-h-11 rounded-xl bg-violet-700 px-4 text-xs font-extrabold text-white disabled:opacity-50">Объединить и закрыть дубль</button>
+          </div>}
+        </div>}
 
-        {request.status === "resolved" && <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-extrabold text-amber-950">Как выполнена работа?</p><div className="mt-3 flex flex-wrap items-center gap-2">{[1, 2, 3, 4, 5].map((value) => <button key={value} disabled={busy} onClick={() => void run(() => rateRequest(request.id, value))} className="grid h-11 w-11 place-items-center rounded-xl bg-white text-amber-500 ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:bg-amber-100" aria-label={`Поставить ${value}`}><Star className="h-5 w-5" /></button>)}<button disabled={busy} onClick={() => void run(() => reopenRequest(request.id, "Работа требует исправления"))} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50"><RotateCcw className="h-4 w-4" />Открыть повторно</button></div></div>}
+        {request.status === "resolved" && isAuthor && <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-extrabold text-amber-950">Как выполнена работа?</p><div className="mt-3 flex flex-wrap items-center gap-2">{[1, 2, 3, 4, 5].map((value) => <button key={value} disabled={busy} onClick={() => void run(() => rateRequest(request.id, value))} className="grid h-11 w-11 place-items-center rounded-xl bg-white text-amber-500 ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:bg-amber-100" aria-label={`Поставить ${value}`}><Star className="h-5 w-5" /></button>)}<button disabled={busy} onClick={() => void run(() => reopenRequest(request.id, "Работа требует исправления"))} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50"><RotateCcw className="h-4 w-4" />Открыть повторно</button></div></div>}
         {request.rating && <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-extrabold text-amber-900"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />Ваша оценка: {request.rating} из 5</p>}
 
         <form onSubmit={submitComment} className="mt-5 flex gap-2"><label className="sr-only" htmlFor={`comment-${request.id}`}>Комментарий к заявке</label><input id={`comment-${request.id}`} value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} placeholder="Написать комментарий…" className="min-h-11 min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-4 text-sm outline-none focus:border-green-700 focus:ring-2 focus:ring-green-700/15" /><button disabled={busy || !comment.trim()} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-green-800 text-white hover:bg-green-900 disabled:opacity-40" aria-label="Отправить комментарий">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button></form>
@@ -217,7 +273,17 @@ export default function RequestsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const canManage = currentUser.membershipRole === "dispatcher" || currentUser.role === "admin" || currentUser.role === "hoa_official" || currentUser.role === "service_provider";
+  const isManagement = currentUser.membershipRole === "dispatcher" || currentUser.role === "admin" || currentUser.role === "hoa_official";
+  const [executors, setExecutors] = useState<Executor[]>([]);
+  useEffect(() => {
+    if (!isManagement || !isSupabaseConfigured()) return;
+    void loadResidents()
+      .then((residents) => setExecutors(residents
+        .filter((resident) => resident.verified && resident.role === "executor")
+        .map((resident) => ({ id: resident.userId, name: resident.fullName }))))
+      .catch(() => setExecutors([]));
+  }, [isManagement]);
+  const openRequests = requests.filter((item) => item.status === "submitted" || item.status === "in_progress");
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("create") !== "1") return;
@@ -274,7 +340,7 @@ export default function RequestsPage() {
       </header>
 
       {success && <div role="status" className="mx-4 mt-4 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 sm:mx-6"><CheckCircle2 className="h-5 w-5" />Заявка принята. Изменения появятся в её истории и уведомлениях.</div>}
-      <section className="space-y-3 px-4 py-5 sm:px-6">{filtered.length === 0 ? <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-6 py-14 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-green-700" /><h2 className="mt-4 text-base font-extrabold text-stone-900">Здесь всё спокойно</h2><p className="mt-1 text-sm text-stone-500">Заявок в этой категории пока нет.</p></div> : filtered.map((request, index) => <RequestCard key={request.id} request={request} index={index} canManage={canManage} />)}</section>
+      <section className="space-y-3 px-4 py-5 sm:px-6">{filtered.length === 0 ? <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-6 py-14 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-green-700" /><h2 className="mt-4 text-base font-extrabold text-stone-900">Здесь всё спокойно</h2><p className="mt-1 text-sm text-stone-500">Заявок в этой категории пока нет.</p></div> : filtered.map((request, index) => <RequestCard key={request.id} request={request} index={index} isManagement={isManagement} currentUserId={currentUser.id} executors={executors} mergeCandidates={openRequests.filter((item) => item.id !== request.id)} />)}</section>
 
       {showForm && <div className="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="request-form-title"><form onSubmit={submit} className="sheet-enter max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-[30px] bg-[#fffefb] p-5 shadow-2xl sm:rounded-[30px] sm:p-6">
         <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-green-800">Новая заявка</p><h2 id="request-form-title" className="mt-1 text-xl font-black text-stone-950">Что случилось?</h2></div><button type="button" onClick={() => setShowForm(false)} className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-100 text-stone-600 hover:bg-stone-200" aria-label="Закрыть форму"><X className="h-5 w-5" /></button></div>

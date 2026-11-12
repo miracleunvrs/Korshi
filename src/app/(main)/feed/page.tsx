@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import NextImage from "next/image";
+import Avatar from "@/components/ui/Avatar";
 import { 
   Bell, 
   SlidersHorizontal, 
@@ -19,6 +19,8 @@ import Link from "next/link";
 import PostCard from "@/components/feed/PostCard";
 import FeedFilterModal from "@/components/feed/FeedFilterModal";
 import { useAppStore } from "@/stores/appStore";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { POSTS_PAGE } from "@/lib/supabase/repository";
 import type { PostWithAuthor } from "@/types";
 import TodayOverview from "@/components/feed/TodayOverview";
 import { complexName } from "@/lib/appConfig";
@@ -30,12 +32,15 @@ export default function FeedPage() {
   const [selectedType, setSelectedType] = useState("all");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
+  const [hasOlder, setHasOlder] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState("");
 
   // Quick post creator state
   const [quickPostText, setQuickPostText] = useState("");
   const [quickPostType, setQuickPostType] = useState<"post" | "announcement" | "poll">("post");
 
-  const { posts, addPost, deletePost, likePost, unlikePost, votePoll, supportInitiative, currentUser, urgentAlert, acknowledgeUrgentAlert, notifications, markNotificationRead } = useAppStore();
+  const { posts, addPost, deletePost, likePost, unlikePost, votePoll, supportInitiative, currentUser, urgentAlert, acknowledgeUrgentAlert, notifications, markNotificationRead, loadMorePosts } = useAppStore();
   const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
 
   const chips = ["Весь ЖК", "Мой дом", "Мой подъезд", "Официальное", "Объявления", "Опросы"];
@@ -74,6 +79,20 @@ export default function FeedPage() {
 
     addPost(newPost);
     setQuickPostText("");
+  };
+
+  // Сначала раскрываем уже загруженное, затем просим у сервера следующую страницу.
+  const showMore = async () => {
+    if (visibleCount < filteredPosts.length) { setVisibleCount((value) => value + 12); return; }
+    setLoadingOlder(true); setOlderError("");
+    try {
+      setHasOlder(await loadMorePosts());
+      setVisibleCount((value) => value + 12);
+    } catch (cause) {
+      setOlderError(cause instanceof Error ? cause.message : "Не удалось загрузить публикации");
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
   const filteredPosts = posts.filter((post) => {
@@ -133,7 +152,7 @@ export default function FeedPage() {
             >
               <Bell className="w-4 h-4" />
               {unreadNotifications > 0 && (
-                <span className="absolute mt-[-18px] ml-5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-black leading-4">
+                <span className="absolute mt-[-18px] ml-5 min-w-4 h-4 px-1 rounded-full bg-red-700 text-white text-[9px] font-black leading-4">
                   {unreadNotifications > 9 ? "9+" : unreadNotifications}
                 </span>
               )}
@@ -224,14 +243,7 @@ export default function FeedPage() {
       <div className="border-b border-stone-200/80 bg-[#fffefb] p-4 sm:p-5">
         <form onSubmit={handleQuickPostSubmit} className="space-y-3">
           <div className="flex min-w-0 items-start gap-3">
-            <NextImage
-              src={currentUser.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80"}
-              alt=""
-              width={40}
-              height={40}
-              unoptimized
-              className="h-10 w-10 shrink-0 rounded-xl object-cover ring-2 ring-stone-100"
-            />
+            <Avatar url={currentUser.avatarUrl} name={currentUser.fullName} size={40} className="h-10 w-10 shrink-0 rounded-xl ring-2 ring-stone-100" />
             <textarea
               rows={2}
               value={quickPostText}
@@ -309,7 +321,7 @@ export default function FeedPage() {
                 />
               </div>
             ))}
-            {visibleCount < filteredPosts.length && <div className="p-4"><button onClick={() => setVisibleCount((value) => value + 12)} className="min-h-12 w-full rounded-2xl border border-stone-200 bg-white text-sm font-extrabold text-green-800 hover:bg-green-50">Показать ещё</button></div>}
+            {(visibleCount < filteredPosts.length || (hasOlder && posts.length >= POSTS_PAGE && isSupabaseConfigured())) && <div className="p-4"><button disabled={loadingOlder} onClick={() => void showMore()} className="min-h-12 w-full rounded-2xl border border-stone-200 bg-white text-sm font-extrabold text-green-800 hover:bg-green-50 disabled:opacity-50">{loadingOlder ? "Загружаем…" : "Показать ещё"}</button>{olderError && <p role="alert" className="mt-2 text-center text-xs text-red-700">{olderError}</p>}</div>}
           </>
         )}
       </div>

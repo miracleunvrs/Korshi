@@ -1,0 +1,14 @@
+BEGIN;
+SELECT no_plan();
+INSERT INTO chats(id,complex_id,type,name) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','11111111-1111-1111-1111-111111111111','complex','Проверка идемпотентности');
+INSERT INTO chat_members(chat_id,user_id) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','eeeeeeee-eeee-4eee-8eee-000000000001',true);
+SELECT lives_ok($$INSERT INTO messages(chat_id,sender_id,content,client_msg_id) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001','Первое','ffffffff-ffff-4fff-8fff-ffffffffff41')$$,'First send with idempotency key succeeds');
+SELECT throws_ok($$INSERT INTO messages(chat_id,sender_id,content,client_msg_id) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001','Повтор','ffffffff-ffff-4fff-8fff-ffffffffff41')$$,'23505',NULL,'Retry with the same key is rejected');
+SELECT lives_ok($$INSERT INTO messages(chat_id,sender_id,content,client_msg_id) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001','Повтор','ffffffff-ffff-4fff-8fff-ffffffffff41') ON CONFLICT (client_msg_id) DO NOTHING$$,'Upsert retry is absorbed');
+SELECT is((SELECT count(*) FROM messages WHERE client_msg_id='ffffffff-ffff-4fff-8fff-ffffffffff41'),1::bigint,'Lost response retry creates exactly one message');
+SELECT lives_ok($$INSERT INTO messages(chat_id,sender_id,content) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001','Без ключа раз')$$,'Legacy row without a key is accepted');
+SELECT lives_ok($$INSERT INTO messages(chat_id,sender_id,content) VALUES('ffffffff-ffff-4fff-8fff-ffffffffff40','eeeeeeee-eeee-4eee-8eee-000000000001','Без ключа два')$$,'Second legacy row without a key does not conflict');
+SELECT * FROM finish();
+ROLLBACK;

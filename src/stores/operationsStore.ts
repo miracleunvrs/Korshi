@@ -1,11 +1,12 @@
 import { operationsFixturesInitial } from "@/demo/initialState";
+import { localDateTimeToIso } from "@/lib/datetime";
 import { isDemoMode } from "@/lib/supabase/config";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { loadPlatformSnapshot, syncPlatformMutation } from "@/lib/supabase/platformRepository";
+import { clearPlatformScope, loadPlatformSnapshot, quarantineStaleScopeActions, syncPlatformMutation } from "@/lib/supabase/platformRepository";
+import { useAppStore } from "@/stores/appStore";
 
 export type MembershipRole = "owner" | "tenant" | "family" | "chair" | "admin" | "dispatcher" | "executor" | "guard" | "concierge";
-export type RsvpChoice = "going" | "maybe" | "not_going";
 
 export interface PropertyMembership {
   id: string;
@@ -62,39 +63,11 @@ export interface HouseWork {
   location: string;
   employee: string;
   startsAt: string;
-  status: "planned" | "in_progress" | "completed" | "missed";
+  status: "planned" | "in_progress" | "completed" | "missed" | "cancelled";
   checklist: Array<{ id: string; label: string; done: boolean }>;
   photoUrl?: string;
   geo?: string;
   rating?: number;
-}
-
-export interface CommunityEvent {
-  id: string;
-  title: string;
-  description: string;
-  startsAt: string;
-  location: string;
-  capacity: number;
-  going: number;
-  userRsvp?: RsvpChoice;
-  albumCount: number;
-}
-
-export interface CommunityClub {
-  id: string;
-  name: string;
-  description: string;
-  members: number;
-  joined: boolean;
-}
-
-export interface CommunityNotice {
-  id: string;
-  kind: "help" | "lost" | "pet" | "group_buy";
-  title: string;
-  description: string;
-  status: "active" | "resolved" | "cancelled";
 }
 
 export interface MarketplaceMeta {
@@ -133,9 +106,6 @@ export interface OperationsState {
   parkingSpots: ParkingSpot[];
   parkingBookings: ParkingBooking[];
   works: HouseWork[];
-  events: CommunityEvent[];
-  clubs: CommunityClub[];
-  notices: CommunityNotice[];
   marketplace: MarketplaceMeta;
   notificationChannels: NotificationChannels;
   complexSettings: ComplexSettings;
@@ -144,16 +114,13 @@ export interface OperationsState {
   hydrateFromBackend: () => Promise<void>;
   switchMembership: (id: string) => Promise<void>;
   inviteFamily: (phone: string) => Promise<void>;
-  createPass: (data: Pick<AccessPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">) => Promise<void>;
+  createPass: (data: Pick<AccessPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">) => Promise<{ queued: boolean }>;
   revokePass: (id: string) => Promise<void>;
-  bookParking: (spotId: string, vehiclePlate: string, startsAt: string, endsAt: string) => Promise<void>;
+  bookParking: (spotId: string, vehiclePlate: string, startsAt: string, endsAt: string) => Promise<{ queued: boolean }>;
   cancelParking: (id: string) => Promise<void>;
   reportParking: (spotId: string, reason: string) => Promise<void>;
   toggleWorkCheck: (workId: string, itemId: string) => void;
   rateWork: (workId: string, rating: number) => Promise<void>;
-  rsvp: (eventId: string, choice: RsvpChoice) => Promise<void>;
-  toggleClub: (clubId: string) => Promise<void>;
-  resolveNotice: (noticeId: string) => Promise<void>;
   toggleFavorite: (listingId: string) => Promise<void>;
   archiveListing: (listingId: string) => Promise<void>;
   reportListing: (listingId: string, reason: string) => Promise<void>;
@@ -193,10 +160,7 @@ export const useOperationsStore = create<OperationsState>()(persist((set, get) =
     if (snapshot.accessEvents) next.accessEvents = snapshot.accessEvents.map((row: any) => ({ id: row.id, subject: row.subject, direction: row.direction, checkpoint: row.checkpoint, occurredAt: dateLabel(row.occurred_at), result: row.result }));
     if (snapshot.parkingSpots) next.parkingSpots = snapshot.parkingSpots.map((row: any) => ({ id: row.id, label: row.label, zone: row.zone, kind: row.kind, status: ["free", "occupied", "reserved"].includes(row.status) ? row.status : "occupied" }));
     if (snapshot.parkingBookings) next.parkingBookings = snapshot.parkingBookings.map((row: any) => ({ id: row.id, spotId: row.parking_spot_id, vehiclePlate: row.vehicle_plate, startsAt: dateLabel(row.starts_at), endsAt: dateLabel(row.ends_at), status: row.status }));
-    if (snapshot.works) next.works = snapshot.works.map((row: any) => ({ id: row.id, title: row.title, kind: row.kind, location: row.location, employee: row.assigned_to ? "Назначеный исполнитель" : "Не назначен", startsAt: dateLabel(row.starts_at), status: row.status, geo: row.performer_geo || undefined, photoUrl: row.attachments?.find((item: any) => item.kind === "after")?.url, checklist: (row.checklist || []).sort((a: any, b: any) => a.position - b.position).map((item: any) => ({ id: item.id, label: item.label, done: Boolean(item.completed_at) })) }));
-    if (snapshot.events) next.events = snapshot.events.map((row: any) => ({ id: row.id, title: row.title, description: row.description || "", startsAt: dateLabel(row.starts_at), location: row.location, capacity: Number(row.capacity || Math.max(20, (row.rsvps || []).length + 10)), going: (row.rsvps || []).filter((item: any) => item.choice === "going").length, userRsvp: row.rsvps?.find((item: any) => item.user_id === snapshot.userId)?.choice, albumCount: (row.albums || []).length }));
-    if (snapshot.clubs) next.clubs = snapshot.clubs.map((row: any) => ({ id: row.id, name: row.name, description: row.description || "", members: (row.members || []).length, joined: Boolean(row.members?.some((item: any) => item.user_id === snapshot.userId)) }));
-    if (snapshot.notices) next.notices = snapshot.notices.map((row: any) => ({ id: row.id, kind: row.kind, title: row.title, description: row.description, status: row.status }));
+    if (snapshot.works) next.works = snapshot.works.map((row: any) => ({ id: row.id, title: row.title, kind: row.kind, location: row.location, employee: row.assigned_to ? "Назначеный исполнитель" : "Не назначен", startsAt: dateLabel(row.starts_at), status: row.status, geo: row.performer_geo || undefined, photoUrl: row.attachments?.find((item: any) => item.kind === "after")?.url, rating: row.ratings?.find((item: any) => item.user_id === snapshot.userId)?.rating, checklist: (row.checklist || []).sort((a: any, b: any) => a.position - b.position).map((item: any) => ({ id: item.id, label: item.label, done: Boolean(item.completed_at) })) }));
     if (snapshot.favorites) next.marketplace = { ...get().marketplace, favoriteIds: snapshot.favorites.map((row: any) => row.classified_id), reviews: snapshot.reviews ? snapshot.reviews.map((row: any) => ({ id: row.id, listingId: row.classified_id, rating: Number(row.rating), text: row.text || "", author: related(row.author)?.full_name || "Житель ЖК" })) : get().marketplace.reviews };
     if (snapshot.complexSettings) { const row: any = snapshot.complexSettings; next.complexSettings = { name: row.name, logoUrl: row.logo_url || "", primaryColor: row.primary_color, managementPhone: row.management_phone || "", managementEmail: row.management_email || "", domain: row.custom_domain || "", languages: row.languages || ["ru"], requestCategories: row.request_categories || [], customRoles: row.custom_roles || [], houseRules: row.house_rules || "", whiteLabel: Boolean(row.white_label) }; }
     if (snapshot.notificationPreferences) { const row: any = snapshot.notificationPreferences; next.notificationChannels = { push: Boolean(row.push), emailCritical: Boolean(row.email_critical), smsCritical: Boolean(row.sms_critical), voting: Boolean(row.voting), payments: Boolean(row.payments) }; }
@@ -205,31 +169,62 @@ export const useOperationsStore = create<OperationsState>()(persist((set, get) =
   switchMembership: async (id) => {
 const result = await confirmedMutation({ operation: "rpc", table: "switch_active_membership", payload: { p_membership_id: id } });
 set((state) => ({ memberships: state.memberships.map((item) => ({ ...item, isActive: item.id === id })) }));
-set({ syncMessage: result.queued ? "Переключение будет завершено после синхронизации" : "Активный объект изменён" });
+if (result.queued) {
+  // Сервер ещё не переключился: обновление с сервера показало бы старый контекст.
+  set({ syncMessage: "Переключение будет завершено после синхронизации" });
+  return;
+}
+// Сервер перевёл активный контекст: сбрасываем устаревший scope очереди,
+// затем согласованно обновляем данные операций, профиль и данные домена.
+clearPlatformScope();
+try {
+  await get().hydrateFromBackend();
+  const quarantined = quarantineStaleScopeActions();
+  await useAppStore.getState().syncAuthState();
+  await useAppStore.getState().hydrateDomainData();
+  const actionWord = quarantined === 1 ? "действие" : "действий";
+  set({ syncMessage: quarantined > 0
+    ? `Активный объект изменён. ${quarantined} ${actionWord} относятся к другому ЖК и требуют проверки.`
+    : "Активный объект изменён" });
+} catch (error) {
+  set({ syncMessage: error instanceof Error ? error.message : "Не удалось обновить данные после переключения" });
+  throw error;
+}
 },
   inviteFamily: async (phone) => {
 const result = await confirmedMutation({ operation: "insert", table: "family_invitations", payload: { phone, role: "family" } });
 set({ syncMessage: result.queued ? "Приглашение сохранено и будет отправлено после синхронизации" : "Приглашение создано" });
 },
   createPass: async (data) => {
-const item: AccessPass = { ...data, id: crypto.randomUUID(), code: randomCode(), status: "active", arrivals: 0 };
-const result = await confirmedMutation({ operation: "insert", table: "access_passes", payload: { id: item.id, guest_name: item.guestName, kind: item.kind, access_code: item.code, vehicle_plate: item.vehiclePlate || null, valid_until: item.validUntil, max_uses: item.kind === "single" || item.kind === "courier" ? 1 : null } });
-set((state) => ({ passes: [item, ...state.passes] }));
-set({ syncMessage: result.queued ? "Пропуск работает локально и ожидает синхронизации" : "Пропуск создан" });
+const validUntil = localDateTimeToIso(data.validUntil);
+const item: AccessPass = { ...data, validUntil: dateLabel(validUntil), id: crypto.randomUUID(), code: "", status: "active", arrivals: 0 };
+// Код доступа выдаёт сервер (криптостойкий default колонки); клиент его не задаёт.
+const result = await confirmedMutation({ operation: "insert", table: "access_passes", payload: { id: item.id, guest_name: item.guestName, kind: item.kind, vehicle_plate: item.vehiclePlate || null, valid_until: validUntil, max_uses: item.kind === "single" || item.kind === "courier" ? 1 : null } });
+if (result.queued) return result;
+const created = result.data && typeof result.data === "object" && !Array.isArray(result.data) ? result.data : null;
+item.code = typeof created?.access_code === "string" ? created.access_code : randomCode();
+set((state) => ({ passes: [item, ...state.passes], syncMessage: "Пропуск создан" }));
+return result;
 },
   revokePass: async (id) => {
-await confirmedMutation({ operation: "update", table: "access_passes", recordId: id, payload: { status: "revoked" } });
+const result = await confirmedMutation({ operation: "update", table: "access_passes", recordId: id, payload: { status: "revoked" } });
+if (result.queued) return;
 set((state) => ({ passes: state.passes.map((item) => item.id === id ? { ...item, status: "revoked" } : item) }));
 },
   bookParking: async (spotId, vehiclePlate, startsAt, endsAt) => {
-const item: ParkingBooking = { id: crypto.randomUUID(), spotId, vehiclePlate, startsAt, endsAt, status: "confirmed" };
-const result = await confirmedMutation({ operation: "rpc", table: "book_guest_parking", payload: { p_spot_id: spotId, p_vehicle_plate: vehiclePlate, p_starts_at: startsAt, p_ends_at: endsAt } });
+const startsIso = localDateTimeToIso(startsAt);
+const endsIso = localDateTimeToIso(endsAt);
+const item: ParkingBooking = { id: crypto.randomUUID(), spotId, vehiclePlate, startsAt: dateLabel(startsIso), endsAt: dateLabel(endsIso), status: "confirmed" };
+const result = await confirmedMutation({ operation: "rpc", table: "book_guest_parking", payload: { p_spot_id: spotId, p_vehicle_plate: vehiclePlate, p_starts_at: startsIso, p_ends_at: endsIso } });
+if (result.queued) return result;
 if (result.data && typeof result.data === "object" && !Array.isArray(result.data) && typeof result.data.id === "string") item.id = result.data.id;
 set((state) => ({ parkingBookings: [item, ...state.parkingBookings], parkingSpots: state.parkingSpots.map((spot) => spot.id === spotId ? { ...spot, status: "reserved" } : spot) }));
+return result;
 },
   cancelParking: async (id) => {
 const booking = get().parkingBookings.find((item) => item.id === id);
-await confirmedMutation({ operation: "update", table: "parking_bookings", recordId: id, payload: { status: "cancelled" } });
+const result = await confirmedMutation({ operation: "update", table: "parking_bookings", recordId: id, payload: { status: "cancelled" } });
+if (result.queued) return;
 set((state) => ({ parkingBookings: state.parkingBookings.map((item) => item.id === id ? { ...item, status: "cancelled" } : item), parkingSpots: state.parkingSpots.map((spot) => spot.id === booking?.spotId ? { ...spot, status: "free" } : spot) }));
 },
   reportParking: async (spotId, reason) => {
@@ -242,21 +237,10 @@ await confirmedMutation({ operation: "update", table: "work_order_checklist_item
 set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, checklist: work.checklist.map((item) => item.id === itemId ? { ...item, done: !item.done } : item) } : work) }));
 },
   rateWork: async (workId, rating) => {
+if (get().works.find((work) => work.id === workId)?.status !== "completed") throw new Error("Оценить можно только завершённую работу");
+if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error("Выберите оценку от 1 до 5");
 await confirmedMutation({ operation: "upsert", table: "work_ratings", payload: { work_order_id: workId, rating } });
 set((state) => ({ works: state.works.map((work) => work.id === workId ? { ...work, rating } : work) }));
-},
-  rsvp: async (eventId, choice) => {
-await confirmedMutation({ operation: "rpc", table: "rsvp_community_event", payload: { p_event_id: eventId, p_choice: choice } });
-set((state) => ({ events: state.events.map((item) => item.id === eventId ? { ...item, going: item.going + (choice === "going" && item.userRsvp !== "going" ? 1 : item.userRsvp === "going" && choice !== "going" ? -1 : 0), userRsvp: choice } : item) }));
-},
-  toggleClub: async (clubId) => {
-const club = get().clubs.find((item) => item.id === clubId);
-await confirmedMutation({ operation: club?.joined ? "delete" : "insert", table: "community_club_members", match: club?.joined ? { club_id: clubId } : undefined, payload: { club_id: clubId } });
-set((state) => ({ clubs: state.clubs.map((item) => item.id === clubId ? { ...item, joined: !item.joined, members: Math.max(0, item.members + (item.joined ? -1 : 1)) } : item) }));
-},
-  resolveNotice: async (noticeId) => {
-await confirmedMutation({ operation: "update", table: "community_notices", recordId: noticeId, payload: { status: "resolved" } });
-set((state) => ({ notices: state.notices.map((item) => item.id === noticeId ? { ...item, status: "resolved" } : item) }));
 },
   toggleFavorite: async (listingId) => {
 const removing = get().marketplace.favoriteIds.includes(listingId);
@@ -289,7 +273,7 @@ set({ complexSettings: settings });
 },
   triggerSos: async (location) => {
 await confirmedMutation({ operation: "insert", table: "sos_incidents", payload: { location, status: "active" } });
-set({ syncMessage: "SOS отправлен охране и диспетчеру" });
+set({ syncMessage: "SOS зарегистрирован на сервере. Получение охраной не подтверждено; при опасности звоните 112." });
 },
 }), { name: isDemoMode() ? "korshi-demo-operations-v1" : "korshi-operations-v2", partialize: (state) => isDemoMode() ? state : {}, merge: (persisted, current) => isDemoMode() ? { ...current, ...(persisted as Partial<OperationsState>) } : current }));
 

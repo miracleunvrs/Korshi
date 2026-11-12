@@ -2450,6 +2450,7 @@ export type Database = {
       messages: {
         Row: {
           chat_id: string
+          client_msg_id: string | null
           content: string | null
           created_at: string
           id: string
@@ -2461,6 +2462,7 @@ export type Database = {
         }
         Insert: {
           chat_id: string
+          client_msg_id?: string | null
           content?: string | null
           created_at?: string
           id?: string
@@ -2472,6 +2474,7 @@ export type Database = {
         }
         Update: {
           chat_id?: string
+          client_msg_id?: string | null
           content?: string | null
           created_at?: string
           id?: string
@@ -4662,6 +4665,16 @@ export type Database = {
         }
       }
       create_direct_chat: { Args: { p_target_user: string }; Returns: string }
+      create_post_bundle: {
+        Args: {
+          p_attachments?: Json
+          p_fundraiser?: Json
+          p_initiative?: Json
+          p_poll?: Json
+          p_post: Json
+        }
+        Returns: string
+      }
       execute_platform_mutation: {
         Args: { p_complex_id: string; p_id: string; p_mutation: Json }
         Returns: Json
@@ -5267,3 +5280,4 @@ export const Constants = {
     },
   },
 } as const
+

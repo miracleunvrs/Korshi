@@ -13,7 +13,7 @@ const auth = createServerClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, 
 const login = await auth.auth.signInWithPassword({email:'resident@korshi.test',password:'Korshi-local-2027!'});
 if (login.error) throw new Error(`Local smoke login failed: ${login.error.message}`);
 const cookieHeader = [...cookies].map(([name,value])=>`${name}=${value}`).join('; ');
-const routes = ['/feed','/requests','/notifications','/documents','/votes','/finance','/emergency','/services','/operations','/community','/classifieds','/ai','/sync'];
+const routes = ['/feed','/requests','/notifications','/documents','/votes','/finance','/emergency','/services','/operations','/classifieds','/ai','/sync'];
 
 async function reachable() {
   try { return (await fetch(`${baseUrl}/login`)).ok; } catch { return false; }

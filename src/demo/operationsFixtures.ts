@@ -1,5 +1,5 @@
 import type { OperationsState } from "@/stores/operationsStore";
-export function operationsFixtures(): Pick<OperationsState, "memberships" | "passes" | "accessEvents" | "parkingSpots" | "parkingBookings" | "works" | "events" | "clubs" | "notices" | "marketplace" | "notificationChannels" | "complexSettings" | "securityLists"> { return {
+export function operationsFixtures(): Pick<OperationsState, "memberships" | "passes" | "accessEvents" | "parkingSpots" | "parkingBookings" | "works" | "marketplace" | "notificationChannels" | "complexSettings" | "securityLists"> { return {
 memberships: [
     { id: "membership-home", complexName: "Солнечный", address: "Алматы, ул. Абая, 150", building: "2", entrance: "1", apartment: "45", role: "owner", isActive: true },
     { id: "membership-family", complexName: "Жетысу Park", address: "Алматы, мкр. Жетысу-2", building: "4", entrance: "3", apartment: "108", role: "family", isActive: false },
@@ -26,21 +26,6 @@ works: [
     { id: "work-1", title: "Уборка входной группы", kind: "cleaning", location: "Дом 2 · подъезд 1", employee: "Айгуль С.", startsAt: "Сегодня, 09:00", status: "in_progress", geo: "43.2383, 76.9457", checklist: [{ id: "w1-1", label: "Влажная уборка", done: true }, { id: "w1-2", label: "Лифтовой холл", done: true }, { id: "w1-3", label: "Фотоотчёт", done: false }] },
     { id: "work-2", title: "ТО пассажирского лифта", kind: "lift", location: "Дом 1 · подъезд 2", employee: "Lift Service KZ", startsAt: "Завтра, 11:00", status: "planned", checklist: [{ id: "w2-1", label: "Диагностика", done: false }, { id: "w2-2", label: "Проверка аварийной связи", done: false }] },
     { id: "work-3", title: "Проверка пожарных датчиков", kind: "repair", location: "Дом 3", employee: "Служба эксплуатации", startsAt: "30 августа, 15:00", status: "missed", checklist: [{ id: "w3-1", label: "Обход этажей", done: false }] },
-  ],
-events: [
-    { id: "event-yard", title: "Соседский пикник", description: "Знакомимся, обсуждаем двор и отдыхаем вместе.", startsAt: "7 сентября, 16:00", location: "Центральный двор", capacity: 40, going: 24, albumCount: 18 },
-    { id: "event-run", title: "Утренняя пробежка", description: "Спокойные 3 км вокруг квартала.", startsAt: "8 сентября, 08:00", location: "У фонтана", capacity: 15, going: 9, albumCount: 0 },
-  ],
-clubs: [
-    { id: "club-parents", name: "Родители Korshi", description: "Прогулки, кружки и взаимопомощь", members: 46, joined: true },
-    { id: "club-sport", name: "Спорт во дворе", description: "Футбол, бег и тренировки", members: 31, joined: false },
-    { id: "club-green", name: "Зелёный двор", description: "Озеленение и раздельный сбор", members: 22, joined: false },
-  ],
-notices: [
-    { id: "notice-help", kind: "help", title: "Помогу донести покупки", description: "Свободен вечером, дом 2.", status: "active" },
-    { id: "notice-lost", kind: "lost", title: "Найдены ключи", description: "Связка с синим брелоком у детской площадки.", status: "active" },
-    { id: "notice-pet", kind: "pet", title: "Ищем хозяина кота", description: "Рыжий кот сидит у третьего подъезда.", status: "active" },
-    { id: "notice-buy", kind: "group_buy", title: "Совместная закупка воды", description: "Нужно ещё 5 квартир для оптовой цены.", status: "active" },
   ],
 marketplace: { favoriteIds: [], archivedIds: [], reports: [], reviews: [] },
 notificationChannels: { push: true, emailCritical: true, smsCritical: false, voting: true, payments: true },

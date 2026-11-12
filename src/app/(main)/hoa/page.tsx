@@ -16,11 +16,14 @@ import {
   ,Grid2X2
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import { useOperationsStore } from "@/stores/operationsStore";
 import { complexName } from "@/lib/appConfig";
 
 export default function HoaPage() {
   const [activeTab, setActiveTab] = useState("Новости");
-  const { posts, votePoll, currentUser } = useAppStore();
+  const { posts, documents, currentUser } = useAppStore();
+  const canManage = currentUser.role === "admin" || currentUser.role === "hoa_official";
+  const settings = useOperationsStore((state) => state.complexSettings);
 
   const categories = [
     { label: "Новости", icon: Newspaper },
@@ -30,7 +33,9 @@ export default function HoaPage() {
     { label: "Сборы", icon: Coins },
   ];
 
-  const officialPosts = posts.filter((p) => p.is_official || p.type === "official_news" || p.type === "official_poll" || p.type === "fundraiser");
+  const officialPosts = posts.filter((p) => (p.is_official || p.type === "official_news") && p.type !== "fundraiser" && p.type !== "official_poll");
+  const initiatives = posts.filter((p) => p.type === "initiative" && p.initiative);
+  const activeDocuments = documents.filter((document) => document.status === "active");
   const activeFundraisers = posts.filter((p) => p.type === "fundraiser" && p.fundraiser);
   const activePolls = posts.filter((p) => (p.type === "poll" || p.type === "official_poll") && p.poll);
 
@@ -39,12 +44,12 @@ export default function HoaPage() {
       {/* Шапка */}
       <div className="glass-nav sticky top-16 z-20 flex items-center justify-between border-b border-stone-200/80 px-4 py-4 shadow-xs sm:px-6 md:top-0">
         <h1 className="font-extrabold text-gray-900 text-lg">Мой ЖК (ОСИ)</h1>
-        <Link
+        {canManage && <Link
           href="/hoa/manage"
           className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition"
         >
           <Plus className="w-4 h-4" /> Запустить сбор
-        </Link>
+        </Link>}
       </div>
 
       <div className="p-6 space-y-6">
@@ -79,6 +84,13 @@ export default function HoaPage() {
           </Link>
         </div>
 
+        {(settings.managementPhone || settings.managementEmail || settings.houseRules) && <div className="rounded-3xl border border-gray-100 bg-gray-50 p-4 space-y-2">
+          <h3 className="text-sm font-bold text-gray-900">Управление и правила дома</h3>
+          {settings.managementPhone && <a href={`tel:${settings.managementPhone.replace(/[^+\d]/g, "")}`} className="block text-xs font-bold text-green-800">{settings.managementPhone}</a>}
+          {settings.managementEmail && <a href={`mailto:${settings.managementEmail}`} className="block text-xs font-bold text-green-800">{settings.managementEmail}</a>}
+          {settings.houseRules && <p className="whitespace-pre-line text-xs leading-relaxed text-gray-600">{settings.houseRules}</p>}
+        </div>}
+
         {/* Быстрые категории */}
         <div className="grid grid-cols-5 gap-2 text-center">
           {categories.map((cat) => {
@@ -107,90 +119,60 @@ export default function HoaPage() {
           })}
         </div>
 
-        {/* Активные сборы ОСИ */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-              <Coins className="w-4 h-4 text-green-600" /> Активные сборы средств
-            </h3>
-          </div>
+        {activeTab === "Новости" && <TabList empty="ОСИ пока не публиковало новостей." items={officialPosts.map((post) => ({ id: post.id, href: `/feed/${post.id}`, title: post.title || "Сообщение ОСИ", text: post.content, meta: new Date(post.created_at).toLocaleDateString("ru-RU") }))} />}
+        {activeTab === "Документы" && <TabList empty="Документы ещё не опубликованы." items={activeDocuments.slice(0, 10).map((document) => ({ id: document.id, href: "/documents", title: document.title, text: document.description, meta: `${document.publishedAt}${document.requiresAcknowledgement && !document.acknowledged ? " · требует ознакомления" : ""}` }))} />}
+        {activeTab === "Опросы" && <TabList empty="Активных опросов нет." items={activePolls.map((post) => ({ id: post.id, href: `/feed/${post.id}`, title: post.title || "Опрос", text: post.content, meta: `${post.poll?.total_votes ?? 0} голосов` }))} />}
+        {activeTab === "Инициативы" && <TabList empty="Инициатив жителей пока нет." items={initiatives.map((post) => ({ id: post.id, href: `/initiatives/${post.initiative!.id}`, title: post.title || "Инициатива", text: post.content, meta: `Поддержали: ${post.initiative?.supporters ?? 0}` }))} />}
 
-          <div className="space-y-3">
+        {activeTab === "Сборы" && <div className="space-y-3">
+          {activeFundraisers.length === 0 && <p className="rounded-2xl bg-gray-50 p-4 text-xs text-gray-500">Активных сборов нет.</p>}
             {activeFundraisers.map((f) => {
               const current = f.fundraiser?.current_amount || 0;
               const target = f.fundraiser?.target_amount || 1;
               const percent = Math.round((current / target) * 100);
 
               return (
-                <div
-                  key={f.id}
-                  className="p-5 bg-white border border-gray-200 rounded-3xl shadow-xs space-y-4 hover:border-green-300 transition"
-                >
-                  <div className="flex justify-between items-start">
+                <div key={f.id} className="p-4 bg-white border border-gray-200 rounded-3xl space-y-3 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-bold">
-                        Официальный сбор
-                      </span>
-                      <h4 className="font-bold text-gray-900 text-base mt-1">
-                        {f.title}
-                      </h4>
-                      <p className="text-xs text-gray-500 mt-0.5">{f.content}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-green-700">Официальный сбор</span>
+                      <h4 className="font-bold text-gray-900 text-base mt-1">{f.title}</h4>
                     </div>
-                    <span className="text-sm font-black text-green-600 bg-green-50 px-2.5 py-1 rounded-xl">
-                      {percent}%
-                    </span>
+                    <span className="text-sm font-black text-green-700">{percent}%</span>
                   </div>
-
-                  <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-green-600 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, percent)}%` }}
-                    />
+                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                    <div className="bg-green-600 h-full rounded-full" style={{ width: `${Math.min(100, percent)}%` }} />
                   </div>
-
                   <div className="flex justify-between items-center text-xs">
-                    <div>
-                      <span className="text-gray-400">Собрано: </span>
-                      <strong className="text-gray-900 font-bold">{current.toLocaleString("ru-RU")} ₸</strong>
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Цель: </span>
-                      <strong className="text-gray-900 font-bold">{target.toLocaleString("ru-RU")} ₸</strong>
-                    </div>
+                    <div><span className="text-gray-400">Подтверждено: </span><strong className="text-gray-900 font-bold">{current.toLocaleString("ru-RU")} ₸</strong></div>
+                    <div><span className="text-gray-400">Цель: </span><strong className="text-gray-900 font-bold">{target.toLocaleString("ru-RU")} ₸</strong></div>
                   </div>
-
                   <Link
-                    href={`/hoa/fundraisers/${f.fundraiser?.id || "fund-1"}`}
+                    href={`/hoa/fundraisers/${f.fundraiser!.id}`}
                     className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition"
                   >
-                    Внести свой вклад <ArrowRight className="w-3.5 h-3.5" />
+                    Подробнее и взнос <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        {/* Официальные новости и объявления */}
-        <div className="space-y-3">
-          <h3 className="font-bold text-gray-900 text-sm">Официальные объявления</h3>
-
-          <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-green-700 bg-green-100/60 px-2 py-0.5 rounded-full">
-                Технические работы
-              </span>
-              <span className="text-[11px] text-gray-400">19 мая в 10:30</span>
-            </div>
-            <h4 className="font-bold text-gray-900 text-sm">
-              Плановые сервисные работы в лифтах
-            </h4>
-            <p className="text-xs text-gray-600 leading-relaxed">
-              С 20 по 25 мая в подъездах 1 и 2 будут проводиться плановые работы по замене тросов и настройке датчиков безопасности.
-            </p>
-          </div>
-        </div>
+        </div>}
       </div>
+    </div>
+  );
+}
+
+function TabList({ items, empty }: { items: Array<{ id: string; href: string; title: string; text: string; meta: string }>; empty: string }) {
+  if (items.length === 0) return <p className="rounded-2xl bg-gray-50 p-4 text-xs text-gray-500">{empty}</p>;
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <Link key={item.id} href={item.href} className="block rounded-2xl border border-gray-100 bg-gray-50 p-4 transition hover:border-green-200">
+          <p className="text-[11px] text-gray-400">{item.meta}</p>
+          <h4 className="mt-1 text-sm font-bold text-gray-900">{item.title}</h4>
+          {item.text && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-600">{item.text}</p>}
+        </Link>
+      ))}
     </div>
   );
 }

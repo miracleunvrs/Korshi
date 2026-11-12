@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_radius.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/data/house_repository.dart';
+import '../../../core/data/offline_action_queue.dart';
 
 class ClassifiedsScreen extends StatefulWidget {
   const ClassifiedsScreen({super.key});
@@ -40,42 +41,59 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
     final descriptionController = TextEditingController();
     final priceController = TextEditingController();
     var category = 'Объявления';
-    final created = await showDialog<bool>(
+    final delivery = await showDialog<OfflineMutationDelivery>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Новое объявление'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: titleController, decoration: const InputDecoration(labelText: 'Заголовок')),
+              TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: 'Заголовок')),
               DropdownButtonFormField<String>(
                 value: category,
                 items: const ['Объявления', 'Услуги', 'Подработки', 'Помощь']
-                    .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                    .map((value) =>
+                        DropdownMenuItem(value: value, child: Text(value)))
                     .toList(),
-                onChanged: (value) => setDialogState(() => category = value ?? category),
+                onChanged: (value) =>
+                    setDialogState(() => category = value ?? category),
                 decoration: const InputDecoration(labelText: 'Категория'),
               ),
-              TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Цена, ₸ (необязательно)')),
-              TextField(controller: descriptionController, maxLines: 3, decoration: const InputDecoration(labelText: 'Описание')),
+              TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Цена, ₸ (необязательно)')),
+              TextField(
+                  controller: descriptionController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Описание')),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Отмена')),
             FilledButton(
               onPressed: () async {
-                if (titleController.text.trim().isEmpty || descriptionController.text.trim().isEmpty) return;
+                if (titleController.text.trim().isEmpty ||
+                    descriptionController.text.trim().isEmpty) return;
                 try {
-                  await repository.createClassified(
+                  final delivery = await repository.createClassified(
                     title: titleController.text,
                     category: category,
                     description: descriptionController.text,
                     price: priceController.text,
                   );
-                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, delivery);
+                  }
                 } catch (error) {
                   if (dialogContext.mounted) {
-                    ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('$error')));
+                    ScaffoldMessenger.of(dialogContext)
+                        .showSnackBar(SnackBar(content: Text('$error')));
                   }
                 }
               },
@@ -88,7 +106,15 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
     titleController.dispose();
     descriptionController.dispose();
     priceController.dispose();
-    if (created == true) await _load();
+    if (!mounted || delivery == null) return;
+    if (delivery == OfflineMutationDelivery.sent) {
+      await _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Нет сети — объявление сохранено для отправки')),
+      );
+    }
   }
 
   @override
@@ -113,7 +139,8 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                 color: isDark ? AppColors.backgroundDark : Colors.white,
                 border: Border(
                   bottom: BorderSide(
-                    color: isDark ? AppColors.borderDark : const Color(0xFFF1F5F9),
+                    color:
+                        isDark ? AppColors.borderDark : const Color(0xFFF1F5F9),
                   ),
                 ),
               ),
@@ -128,12 +155,14 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          color:
+                              isDark ? Colors.white : const Color(0xFF0F172A),
                         ),
                       ),
                       TextButton.icon(
                         onPressed: _createClassified,
-                        icon: const Icon(Icons.add, size: 14, color: AppColors.primary),
+                        icon: const Icon(Icons.add,
+                            size: 14, color: AppColors.primary),
                         label: const Text(
                           'Подать',
                           style: TextStyle(
@@ -150,15 +179,19 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                     onChanged: (v) => setState(() => searchQuery = v),
                     decoration: InputDecoration(
                       hintText: 'Поиск объявлений и услуг',
-                      prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF94A3B8)),
+                      prefixIcon: const Icon(Icons.search,
+                          size: 18, color: Color(0xFF94A3B8)),
                       filled: true,
-                      fillColor: isDark ? AppColors.secondaryDark : const Color(0xFFF1F5F9),
+                      fillColor: isDark
+                          ? AppColors.secondaryDark
+                          : const Color(0xFFF1F5F9),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
                       isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
                     ),
                     style: const TextStyle(fontSize: 13),
                   ),
@@ -196,7 +229,13 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: ['Все', 'Объявления', 'Услуги', 'Подработки', 'Помощь'].map((tab) {
+                      children: [
+                        'Все',
+                        'Объявления',
+                        'Услуги',
+                        'Подработки',
+                        'Помощь'
+                      ].map((tab) {
                         final sel = activeTab == tab;
                         return Padding(
                           padding: const EdgeInsets.only(right: 8),
@@ -204,9 +243,12 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                             onTap: () => setState(() => activeTab = tab),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 7),
                               decoration: BoxDecoration(
-                                color: sel ? AppColors.primary : const Color(0xFFF1F5F9),
+                                color: sel
+                                    ? AppColors.primary
+                                    : const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
@@ -214,7 +256,9 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
-                                  color: sel ? Colors.white : const Color(0xFF475569),
+                                  color: sel
+                                      ? Colors.white
+                                      : const Color(0xFF475569),
                                 ),
                               ),
                             ),
@@ -230,95 +274,109 @@ class _ClassifiedsScreenState extends State<ClassifiedsScreen> {
               child: isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.search_off,
-                      title: 'Ничего не найдено',
-                      subtitle: 'Попробуйте изменить запрос или категорию',
-                    )
-                  : ListView.separated(
-                      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80),
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => Divider(
-                        height: 1,
-                        color: isDark ? AppColors.borderDark : const Color(0xFFF1F5F9),
-                      ),
-                      itemBuilder: (context, i) {
-                        final it = filtered[i];
-                        return InkWell(
-                          onTap: () => showDialog<void>(
-                            context: context,
-                            builder: (_) => AlertDialog(
-                              title: Text(it['title'] as String? ?? 'Объявление'),
-                              content: Text(it['description'] as String? ?? ''),
-                              actions: [
-                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Закрыть')),
-                              ],
-                            ),
+                      ? const EmptyState(
+                          icon: Icons.search_off,
+                          title: 'Ничего не найдено',
+                          subtitle: 'Попробуйте изменить запрос или категорию',
+                        )
+                      : ListView.separated(
+                          padding: EdgeInsets.only(
+                              bottom:
+                                  MediaQuery.of(context).padding.bottom + 80),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: isDark
+                                ? AppColors.borderDark
+                                : const Color(0xFFF1F5F9),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: AppRadius.radiusLg,
-                                  child: CachedNetworkImage(
-                                    imageUrl: (it['image_path'] ?? '') as String,
-                                    width: 64,
-                                    height: 64,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(
-                                      width: 64,
-                                      height: 64,
-                                      color: const Color(0xFFF1F5F9),
-                                    ),
-                                    errorWidget: (_, __, ___) => Container(
-                                      width: 64,
-                                      height: 64,
-                                      color: const Color(0xFFF1F5F9),
-                                      child: const Icon(Icons.image),
-                                    ),
-                                  ),
+                          itemBuilder: (context, i) {
+                            final it = filtered[i];
+                            return InkWell(
+                              onTap: () => showDialog<void>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: Text(
+                                      it['title'] as String? ?? 'Объявление'),
+                                  content:
+                                      Text(it['description'] as String? ?? ''),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Закрыть')),
+                                  ],
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        it['title'] as String,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: AppRadius.radiusLg,
+                                      child: CachedNetworkImage(
+                                        imageUrl:
+                                            (it['image_path'] ?? '') as String,
+                                        width: 64,
+                                        height: 64,
+                                        fit: BoxFit.cover,
+                                        placeholder: (_, __) => Container(
+                                          width: 64,
+                                          height: 64,
+                                          color: const Color(0xFFF1F5F9),
+                                        ),
+                                        errorWidget: (_, __, ___) => Container(
+                                          width: 64,
+                                          height: 64,
+                                          color: const Color(0xFFF1F5F9),
+                                          child: const Icon(Icons.image),
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        (it['price_label'] ?? 'Договорная') as String,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF15803D),
-                                        ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            it['title'] as String,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : const Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            (it['price_label'] ?? 'Договорная')
+                                                as String,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF15803D),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            it['location'] as String,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFF94A3B8),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        it['location'] as String,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF94A3B8),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                    const Icon(Icons.chevron_right,
+                                        size: 18, color: Color(0xFFCBD5E1)),
+                                  ],
                                 ),
-                                const Icon(Icons.chevron_right, size: 18, color: Color(0xFFCBD5E1)),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                              ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
@@ -332,7 +390,11 @@ class _Category extends StatelessWidget {
   final String label;
   final Color bg;
   final Color fg;
-  const _Category({required this.icon, required this.label, required this.bg, required this.fg});
+  const _Category(
+      {required this.icon,
+      required this.label,
+      required this.bg,
+      required this.fg});
   @override
   Widget build(BuildContext context) {
     return Expanded(
@@ -341,7 +403,8 @@ class _Category extends StatelessWidget {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+                color: bg, borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, size: 20, color: fg),
           ),
           const SizedBox(height: 6),

@@ -28,7 +28,7 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post, onVote, onSupportInitiative, onLike, onUnlike, onDelete }: PostCardProps) {
-  const [isLiked, setIsLiked] = useState(false);
+  const isLiked = Boolean(post.liked_by_me);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [shareState, setShareState] = useState<"idle" | "done">("idle");
 
@@ -259,15 +259,13 @@ export default function PostCard({ post, onVote, onSupportInitiative, onLike, on
         <div className="flex items-center gap-4">
           <button
             onClick={() => {
-              const nextLiked = !isLiked;
-              setIsLiked(nextLiked);
-              if (nextLiked) onLike?.(post.id);
-              else onUnlike?.(post.id);
+              if (isLiked) onUnlike?.(post.id);
+              else onLike?.(post.id);
             }}
             className={`flex items-center gap-1.5 hover:text-red-500 transition ${isLiked ? "text-red-500 font-semibold" : ""}`}
           >
             <Heart className={`w-4 h-4 ${isLiked ? "fill-red-500" : ""}`} />
-            <span>{(post.reactions_count || 0) + (isLiked ? 1 : 0)}</span>
+            <span>{post.reactions_count || 0}</span>
           </button>
 
           <Link href={`/feed/${post.id}`} className="flex items-center gap-1.5 hover:text-green-600 transition">

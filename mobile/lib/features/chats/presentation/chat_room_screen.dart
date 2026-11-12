@@ -4,121 +4,178 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/data/house_repository.dart';
+import '../../../core/data/offline_action_queue.dart';
 import '../../../core/data/media_limits.dart';
-import '../../../core/supabase/supabase_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/empty_state.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String chatId;
-  const ChatRoomScreen({super.key, required this.chatId});
+  final HouseRepository? repository;
+  const ChatRoomScreen({super.key, required this.chatId, this.repository});
   @override
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
 class _ChatRoomScreenState extends State<ChatRoomScreen> {
-  final repository = HouseRepository();
+  late final repository = widget.repository ?? HouseRepository();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final List<Map<String, dynamic>> messages = [];
   RealtimeChannel? _syncChannel;
   bool hasError = false;
+  bool _sending = false;
+  bool _loadingHistory = false;
+  bool _hasEarlier = false;
+  String? _beforeCreatedAt;
+  String? _beforeId;
+  String? _historyError;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
-    if (repository.isConfigured) {
-      _syncChannel = Supabase.instance.client
-          .channel('housesm-mobile-chat-${widget.chatId}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'messages',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'chat_id',
-              value: widget.chatId,
-            ),
-            callback: (_) => _loadMessages(),
-          )
-          .subscribe();
-    }
+    _syncChannel = repository.watchMessages(widget.chatId, () => _loadMessages());
   }
 
-  Future<void> _loadMessages() async {
+  Future<void> _loadMessages({bool older = false}) async {
     if (!repository.isConfigured) return;
+    if (_loadingHistory) return;
+    setState(() {
+      _loadingHistory = true;
+      _historyError = null;
+    });
+    final wasEmpty = messages.isEmpty;
+    final previousHeight = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+    final previousOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
     try {
-      final rows = await repository.loadMessages(widget.chatId);
+      final rows = await repository.loadMessages(widget.chatId,
+          beforeCreatedAt: older ? _beforeCreatedAt : null,
+          beforeId: older ? _beforeId : null);
+      final userId = (await repository.currentUser())?.id;
       if (!mounted) return;
-      final userId = repository.isConfigured
-          ? SupabaseConfig.client.auth.currentUser?.id
-          : null;
       setState(() {
         hasError = false;
+        final mapped = rows.map((row) {
+          final sender = row['sender'] is List
+              ? ((row['sender'] as List).isEmpty
+                  ? null
+                  : (row['sender'] as List).first)
+              : row['sender'];
+          return <String, dynamic>{
+            'id': row['id'],
+            'created_at': row['created_at'],
+            'text': row['is_deleted'] == true
+                ? 'Сообщение удалено'
+                : row['type'] == 'image'
+                    ? '🖼️ Изображение'
+                    : row['type'] == 'document'
+                        ? '📎 Документ'
+                        : row['content'] ?? '',
+            'isMe': row['sender_id'] == userId,
+            'time': '${row['created_at']}'.substring(11, 16),
+            'sender': sender is Map ? sender['full_name'] ?? 'Сосед' : 'Сосед',
+            'isOfficial': sender is Map && sender['role'] == 'hoa_official',
+          };
+        }).toList();
+        final byId = {
+          for (final message in messages.where((m) => m['id'] != null))
+            message['id']: message
+        };
+        for (final message in mapped) {
+          byId[message['id']] = message;
+        }
+        final persisted = byId.values.toList()
+          ..sort((a, b) {
+            final time = (a['created_at'] as String)
+                .compareTo(b['created_at'] as String);
+            return time != 0
+                ? time
+                : (a['id'] as String).compareTo(b['id'] as String);
+          });
+        final local = messages.where((m) => m['id'] == null && (m['pending'] == true || m['delivery'] == OfflineMutationDelivery.queued)).toList();
         messages
           ..clear()
-          ..addAll(rows.map((row) {
-            final sender = row['sender'] is List
-                ? ((row['sender'] as List).isEmpty
-                    ? null
-                    : (row['sender'] as List).first)
-                : row['sender'];
-            return {
-              'text': row['is_deleted'] == true
-                  ? 'Сообщение удалено'
-                  : row['type'] == 'image'
-                      ? '🖼️ Изображение'
-                      : row['type'] == 'document'
-                          ? '📎 Документ'
-                          : row['content'] ?? '',
-              'isMe': row['sender_id'] == userId,
-              'time': '${row['created_at']}'.substring(11, 16),
-              'sender':
-                  sender is Map ? sender['full_name'] ?? 'Сосед' : 'Сосед',
-              'isOfficial': sender is Map && sender['role'] == 'hoa_official',
-            };
-          }));
+          ..addAll(persisted)
+          ..addAll(local);
+        if (older || wasEmpty) {
+          _hasEarlier = rows.length == HouseRepository.messagePageSize;
+          if (rows.isNotEmpty) {
+            _beforeCreatedAt = rows.first['created_at'] as String;
+            _beforeId = rows.first['id'] as String;
+          }
+        }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        if (older) {
+          _scrollController.jumpTo((previousOffset +
+                  _scrollController.position.maxScrollExtent -
+                  previousHeight)
+              .clamp(0.0, _scrollController.position.maxScrollExtent));
+        } else if (wasEmpty) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
       });
     } catch (_) {
-      if (mounted) setState(() => hasError = true);
+      if (mounted) {
+        setState(() {
+          hasError = messages.isEmpty;
+          _historyError = 'Не удалось загрузить историю. Попробуйте ещё раз.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingHistory = false);
     }
   }
 
   Future<void> _send() async {
-    if (_controller.text.trim().isEmpty) return;
-    final text = _controller.text.trim();
+    if (_sending || _controller.text.trim().isEmpty) return;
+    final draft = _controller.text;
+    final text = draft.trim();
     final now = TimeOfDay.now();
     final time =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final message = <String, dynamic>{
+      'text': text,
+      'isMe': true,
+      'time': time,
+      'sender': 'Вы',
+      'isOfficial': false,
+      'pending': true,
+    };
     setState(() {
-      messages.add({
-        'text': text,
-        'isMe': true,
-        'time': time,
-        'sender': 'Вы',
-        'isOfficial': false,
-      });
-      _controller.clear();
+      _sending = true;
+      messages.add(message);
     });
-    if (repository.isConfigured) {
-      final user = repository.isConfigured
-          ? SupabaseConfig.client.auth.currentUser
-          : null;
-      if (user != null) {
-        try {
-          await repository.sendMessage(widget.chatId, text);
-        } catch (_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Не удалось сохранить сообщение')),
-            );
-          }
-        }
+    try {
+      final delivery = await repository.sendMessage(widget.chatId, text);
+      if (!mounted) return;
+      setState(() {
+        message['pending'] = false;
+        message['delivery'] = delivery;
+        if (_controller.text == draft) _controller.clear();
+      });
+      if (delivery == OfflineMutationDelivery.queued) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Нет сети — сообщение сохранено для отправки')),
+        );
       }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => messages.remove(message));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить сообщение')),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
+      if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent + 80,
           duration: const Duration(milliseconds: 250),
@@ -170,7 +227,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void dispose() {
     if (_syncChannel != null) {
-      Supabase.instance.client.removeChannel(_syncChannel!);
+      _syncChannel!.unsubscribe();
     }
     _controller.dispose();
     _scrollController.dispose();
@@ -239,6 +296,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ),
       body: Column(
         children: [
+          if (_hasEarlier)
+            TextButton(
+              onPressed:
+                  _loadingHistory ? null : () => _loadMessages(older: true),
+              child: Text(
+                  _loadingHistory ? 'Загрузка…' : 'Более ранние сообщения'),
+            ),
+          if (_historyError != null && messages.isNotEmpty)
+            Text(_historyError!, style: const TextStyle(color: Colors.red)),
           Expanded(
             child: hasError
                 ? ErrorView(
@@ -346,8 +412,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                   ),
                                   if (isMe) ...[
                                     const SizedBox(width: 4),
-                                    const Icon(Icons.done_all,
-                                        size: 12, color: Colors.white70),
+                                    Icon(
+                                      m['pending'] == true
+                                          ? Icons.hourglass_top
+                                          : m['delivery'] ==
+                                                  OfflineMutationDelivery.queued
+                                              ? Icons.schedule
+                                              : Icons.done_all,
+                                      size: 12,
+                                      color: Colors.white70,
+                                    ),
                                   ],
                                 ],
                               ),
@@ -440,7 +514,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           color:
                               hasText ? Colors.white : const Color(0xFF94A3B8),
                         ),
-                        onPressed: hasText ? _send : null,
+                        onPressed: hasText && !_sending ? _send : null,
                       ),
                     );
                   },

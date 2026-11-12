@@ -1,13 +1,15 @@
 import { appFixturesInitial } from "@/demo/initialState";
 import { DEFAULT_ACCOUNTS } from "@/demo/accounts";
-import type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, VisitorPass, ResidentVehicle, NotificationPreferenceKey, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
-export type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, VisitorPass, ResidentVehicle, NotificationPreferenceKey, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
+import type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, ResidentVehicle, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
+export type { UserAccount, MessageItem, ChatItem, VerificationRequest, AppNotification, ClassifiedItem, ServiceRequestStatus, ServiceRequestPriority, ServiceRequestCategory, ServiceRequestItem, ServiceRequestAttachment, ServiceRequestEvent, HouseDocumentCategory, HouseDocument, OfficialVoteChoice, OfficialVoteItem, FinanceTransaction, FinanceBudgetItem, FinanceOverview, HomeScheduleItem, AmenityResource, AmenityBooking, ResidentVehicle, EmergencyAlert, RegistrationResult, AppState } from "@/types/app";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { PostWithAuthor, UserRole } from "@/types";
 import type { Database } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { getAuthCallbackUrl, isSupabaseConfigured, isDemoMode } from "@/lib/supabase/config";
+import { complexName } from "@/lib/appConfig";
+import { mergeChatMessages } from "@/features/chats/history";
 import type { User } from "@supabase/supabase-js";
 import {
   deleteClassified as deleteClassifiedRemote,
@@ -15,7 +17,12 @@ import {
   deleteMessage as deleteMessageRemote,
   deletePost as deletePostRemote,
   createDirectChat as createDirectChatRemote,
+  markChatRead as markChatReadRemote,
   hydrateDomainData,
+  loadOlderPosts,
+  loadChatUpdate,
+  loadNotificationList,
+  POSTS_PAGE,
   persistClassified,
   persistComment,
   persistFundraiser,
@@ -40,7 +47,6 @@ import {
   recordFundraiserPayment,
   recordFinanceTransaction,
   persistAmenityBooking,
-  persistVisitorPass,
   persistResidentVehicle,
   reviewVerificationRequest,
   submitVerificationRequest as submitVerificationRequestRemote,
@@ -174,6 +180,14 @@ async function loadAccount(user: User): Promise<UserAccount> {
   };
 }
 
+let hydrateRequest = 0;
+
+const withLike = (postId: string, liked: boolean) => (posts: PostWithAuthor[]) => posts.map((p) =>
+  p.id === postId && Boolean(p.liked_by_me) !== liked
+    ? { ...p, liked_by_me: liked, reactions_count: Math.max(0, (p.reactions_count || 0) + (liked ? 1 : -1)) }
+    : p
+);
+
 function mergeAccount(users: UserAccount[], account: UserAccount) {
   return [
     account,
@@ -195,15 +209,6 @@ export const useAppStore = create<AppState>()(
       supabaseUserId: null,
       backendError: null,
 
-      notificationPreferences: {
-        requests: true,
-        community: true,
-        finance: true,
-        emergency: true,
-      },
-      setNotificationPreference: (key, enabled) => set((state) => ({
-        notificationPreferences: { ...state.notificationPreferences, [key]: enabled },
-      })),
 
       markNotificationRead: async (notificationId) => {
         if (isSupabaseConfigured()) {
@@ -221,16 +226,24 @@ export const useAppStore = create<AppState>()(
 
       hydrateDomainData: async () => {
         if (!isSupabaseConfigured()) return;
+        const request = ++hydrateRequest;
         try {
           const data = await hydrateDomainData();
-          if (!data) return;
+          // Более поздний запрос уже начат: этот ответ устарел и не должен затирать данные.
+          if (!data || request !== hydrateRequest) return;
+          // Свежая страница заменяет начало ленты; догруженные кнопкой «Показать ещё»
+          // старые посты сохраняем, иначе каждая синхронизация сбрасывала бы их.
+          const oldest = data.posts.length >= POSTS_PAGE ? data.posts.at(-1)?.created_at : undefined;
+          const freshIds = new Set(data.posts.map((post) => post.id));
+          const keptOlder = oldest ? get().posts.filter((post) => !freshIds.has(post.id) && post.created_at < oldest) : [];
+          const keptComments = Object.fromEntries(keptOlder.map((post) => [post.id, get().postComments[post.id] || []]));
           set({
-            posts: data.posts,
+            posts: [...data.posts, ...keptOlder],
             chats: data.chats,
             messages: data.messages,
             classifieds: data.classifieds,
             verificationRequests: data.verificationRequests,
-            postComments: data.postComments,
+            postComments: { ...keptComments, ...data.postComments },
             notifications: data.notifications,
             serviceRequests: data.serviceRequests,
             documents: data.documents,
@@ -240,15 +253,43 @@ export const useAppStore = create<AppState>()(
             scheduleItems: data.scheduleItems,
             amenityResources: data.amenityResources,
             amenityBookings: data.amenityBookings,
-            visitorPasses: data.visitorPasses,
             residentVehicles: data.residentVehicles,
             backendError: null,
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : "Не удалось загрузить данные";
-          set({ backendError: message });
+          if (request === hydrateRequest) set({ backendError: message });
           throw error;
         }
+      },
+
+      // Точечные обновления для самых частых событий realtime: сообщение не
+      // должно перезагружать у каждого участника все данные приложения.
+      refreshChats: async (chatId) => {
+        if (!isSupabaseConfigured()) return;
+        const request = hydrateRequest;
+        const update = await loadChatUpdate(chatId);
+        if (!update || request !== hydrateRequest) return;
+        set((state) => {
+          if (!update.chatId || !update.messages) return { chats: update.chats };
+          const page = update.messages;
+          const newestServer = page.at(-1)?.createdAt || "";
+          // Своё сообщение, ещё не дошедшее до сервера, не должно мигать.
+          const pending = (state.messages[update.chatId] || []).filter((message) =>
+            message.isMe && !page.some((item) => item.id === message.id) && (message.createdAt || "") > newestServer);
+          return {
+            chats: update.chats,
+            messages: { ...state.messages, [update.chatId]: mergeChatMessages(page, pending) },
+          };
+        });
+      },
+
+      refreshNotifications: async () => {
+        if (!isSupabaseConfigured()) return;
+        const request = hydrateRequest;
+        const notifications = await loadNotificationList();
+        if (!notifications || request !== hydrateRequest) return;
+        set({ notifications });
       },
 
       syncAuthState: async () => {
@@ -265,6 +306,7 @@ export const useAppStore = create<AppState>()(
           if (error) throw error;
 
           if (!data.user) {
+            hydrateRequest += 1;
             set({ ...appFixturesInitial(), isLoggedIn: false, supabaseUserId: null, isAuthLoading: false });
             return;
           }
@@ -373,10 +415,15 @@ export const useAppStore = create<AppState>()(
           if (error) throw error;
         }
 
+        // С реальным бэкендом в памяти не должно остаться данных вышедшего пользователя,
+        // а загрузка, начатая до выхода, не должна их вернуть.
+        hydrateRequest += 1;
         set({
+          ...(isSupabaseConfigured() ? appFixturesInitial() : {}),
           currentUser: DEFAULT_ACCOUNTS[0],
           isLoggedIn: false,
           supabaseUserId: null,
+          backendError: null,
         });
       },
 
@@ -512,7 +559,7 @@ export const useAppStore = create<AppState>()(
       },
 
       updateServiceRequestStatus: async (requestId, status, options = {}) => {
-        await persistServiceRequestStatus(requestId, status, options.note, options.assigneeName, options.slaDueAt);
+        await persistServiceRequestStatus(requestId, status, options.note, options.assigneeName, options.slaDueAt, options.assigneeId);
         const state = get();
         const now = new Date().toLocaleString("ru-RU");
         set((current) => ({
@@ -520,7 +567,8 @@ export const useAppStore = create<AppState>()(
             ...request,
             status,
             assigneeName: options.assigneeName || request.assigneeName,
-            slaDueAt: options.slaDueAt || request.slaDueAt,
+            assigneeId: options.assigneeId || request.assigneeId,
+            slaDueAt: options.slaDueAt ? new Date(options.slaDueAt).toLocaleString("ru-RU") : request.slaDueAt,
             resolutionNote: status === "resolved" ? options.note || request.resolutionNote : request.resolutionNote,
             updatedAt: now,
             events: [...request.events, {
@@ -608,19 +656,6 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ amenityBookings: [booking, ...state.amenityBookings] }));
       },
 
-      createVisitorPass: async (data) => {
-        const remote = await persistVisitorPass(data);
-        const now = new Date().toLocaleString("ru-RU");
-        const pass: VisitorPass = remote || {
-          id: `pass-${Date.now()}`,
-          ...data,
-          accessCode: crypto.randomUUID().slice(0, 8).toUpperCase(),
-          validFrom: now,
-          status: "active",
-        };
-        set((state) => ({ visitorPasses: [pass, ...state.visitorPasses] }));
-      },
-
       addResidentVehicle: async (plate, label) => {
         const remote = await persistResidentVehicle(plate, label);
         const vehicle: ResidentVehicle = remote || { id: `vehicle-${Date.now()}`, plate, label };
@@ -642,18 +677,24 @@ export const useAppStore = create<AppState>()(
 
       approveVerification: (requestId) =>
         set((state) => {
-          const previousRequests = state.verificationRequests;
-          const previousUsers = state.registeredUsers;
-          const previousCurrentUser = state.currentUser;
-          void reviewVerificationRequest(requestId, true).catch((error) => {
-            set({
-              verificationRequests: previousRequests,
-              registeredUsers: previousUsers,
-              currentUser: previousCurrentUser,
-              backendError: error instanceof Error ? error.message : "Не удалось подтвердить жителя",
-            });
-          });
           const req = state.verificationRequests.find((r) => r.id === requestId);
+          const wasVerified = state.registeredUsers.find((u) => u.id === req?.userId)?.verified ?? false;
+          const currentWasVerified = state.currentUser.verified;
+          void reviewVerificationRequest(requestId, true).catch((error) => {
+            // Возвращаем только эту заявку и её жителя, не затирая параллельные обновления.
+            set((current) => ({
+              verificationRequests: current.verificationRequests.map((r) =>
+                r.id === requestId && req ? { ...r, status: req.status } : r
+              ),
+              registeredUsers: current.registeredUsers.map((u) =>
+                req && u.id === req.userId ? { ...u, verified: wasVerified } : u
+              ),
+              currentUser: req && current.currentUser.id === req.userId
+                ? { ...current.currentUser, verified: currentWasVerified }
+                : current.currentUser,
+              backendError: error instanceof Error ? error.message : "Не удалось подтвердить жителя",
+            }));
+          });
           const updatedRequests = state.verificationRequests.map((r) =>
             r.id === requestId ? { ...r, status: "approved" as const } : r
           );
@@ -672,18 +713,20 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      rejectVerification: (requestId) =>
+      rejectVerification: (requestId, reason) =>
         set((state) => {
-          const previousRequests = state.verificationRequests;
-          void reviewVerificationRequest(requestId, false).catch((error) => {
-            set({
-              verificationRequests: previousRequests,
+          const previousStatus = state.verificationRequests.find((r) => r.id === requestId)?.status;
+          void reviewVerificationRequest(requestId, false, reason).catch((error) => {
+            set((current) => ({
+              verificationRequests: current.verificationRequests.map((r) =>
+                r.id === requestId && previousStatus ? { ...r, status: previousStatus } : r
+              ),
               backendError: error instanceof Error ? error.message : "Не удалось отклонить заявку",
-            });
+            }));
           });
           return {
             verificationRequests: state.verificationRequests.map((r) =>
-              r.id === requestId ? { ...r, status: "rejected" as const } : r
+              r.id === requestId ? { ...r, status: "rejected" as const, reviewReason: reason || r.reviewReason } : r
             ),
           };
         }),
@@ -693,68 +736,80 @@ export const useAppStore = create<AppState>()(
           const savedPost = isSupabaseConfigured() && !isUuid(post.id)
             ? { ...post, id: crypto.randomUUID() }
             : post;
-          const previousPosts = state.posts;
           void persistPost(savedPost).catch((error) => {
-            set({
-              posts: previousPosts,
+            set((current) => ({
+              posts: current.posts.filter((item) => item.id !== savedPost.id),
               backendError: error instanceof Error ? error.message : "Не удалось сохранить публикацию",
-            });
+            }));
           });
           return { posts: [savedPost, ...state.posts], backendError: null };
         }),
 
+      loadMorePosts: async () => {
+        const oldest = get().posts.at(-1)?.created_at;
+        if (!isSupabaseConfigured() || !oldest) return false;
+        const page = await loadOlderPosts(oldest);
+        set((state) => {
+          const known = new Set(state.posts.map((post) => post.id));
+          return {
+            posts: [...state.posts, ...page.posts.filter((post) => !known.has(post.id))],
+            postComments: { ...page.comments, ...state.postComments },
+          };
+        });
+        return page.posts.length >= POSTS_PAGE;
+      },
+
       deletePost: (postId) =>
         set((state) => {
+          const removed = state.posts.find((post) => post.id === postId);
           void deletePostRemote(postId).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось удалить публикацию" });
+            set((current) => ({
+              posts: removed && !current.posts.some((post) => post.id === postId) ? [removed, ...current.posts] : current.posts,
+              backendError: error instanceof Error ? error.message : "Не удалось удалить публикацию",
+            }));
           });
           return { posts: state.posts.filter((post) => post.id !== postId) };
         }),
 
-      likePost: (postId) =>
-        set((state) => {
-          const previousPosts = state.posts;
-          void persistReaction(postId).catch((error) => {
-            set({
-              posts: previousPosts,
-              backendError: error instanceof Error ? error.message : "Не удалось сохранить реакцию",
-            });
-          });
-          return {
-            posts: state.posts.map((p) =>
-              p.id === postId
-                ? { ...p, reactions_count: (p.reactions_count || 0) + 1 }
-                : p
-            ),
-          };
-        }),
+      likePost: (postId) => {
+        if (get().posts.find((p) => p.id === postId)?.liked_by_me) return;
+        set((state) => ({ posts: withLike(postId, true)(state.posts) }));
+        void persistReaction(postId).catch((error) => {
+          // Откатываем только этот лайк, не затирая параллельные обновления ленты.
+          set((current) => ({
+            posts: withLike(postId, false)(current.posts),
+            backendError: error instanceof Error ? error.message : "Не удалось сохранить реакцию",
+          }));
+        });
+      },
 
-      unlikePost: (postId) =>
-        set((state) => {
-          const previousPosts = state.posts;
-          void removeReaction(postId).catch((error) => {
-            set({
-              posts: previousPosts,
-              backendError: error instanceof Error ? error.message : "Не удалось убрать реакцию",
-            });
-          });
-          return {
-            posts: state.posts.map((p) =>
-              p.id === postId
-                ? { ...p, reactions_count: Math.max(0, (p.reactions_count || 0) - 1) }
-                : p
-            ),
-          };
-        }),
+      unlikePost: (postId) => {
+        if (!get().posts.find((p) => p.id === postId)?.liked_by_me) return;
+        set((state) => ({ posts: withLike(postId, false)(state.posts) }));
+        void removeReaction(postId).catch((error) => {
+          set((current) => ({
+            posts: withLike(postId, true)(current.posts),
+            backendError: error instanceof Error ? error.message : "Не удалось убрать реакцию",
+          }));
+        });
+      },
 
       votePoll: (postId, optionId) =>
         set((state) => {
-          const previousPosts = state.posts;
           void persistPollVote(postId, optionId).catch((error) => {
-            set({
-              posts: previousPosts,
+            set((current) => ({
+              posts: current.posts.map((p) => p.id === postId && p.poll ? {
+                ...p,
+                poll: {
+                  ...p.poll,
+                  total_votes: Math.max(0, p.poll.total_votes - 1),
+                  options: p.poll.options.map((opt) =>
+                    opt.id === optionId ? { ...opt, votes_count: Math.max(0, opt.votes_count - 1) } : opt
+                  ),
+                },
+              } : p),
               backendError: error instanceof Error ? error.message : "Не удалось сохранить голос",
-            });
+            }));
           });
           return {
           posts: state.posts.map((p) => {
@@ -798,11 +853,22 @@ export const useAppStore = create<AppState>()(
         set((state) => {
           const currentList = state.postComments[postId] || [];
           const commentId = isSupabaseConfigured() ? crypto.randomUUID() : `c-${Date.now()}`;
-          void persistComment(postId, commentText).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось сохранить комментарий" });
+          void persistComment(postId, commentText, commentId).catch((error) => {
+            // Убираем только несохранённый комментарий, не затирая параллельные обновления.
+            set((current) => ({
+              postComments: {
+                ...current.postComments,
+                [postId]: (current.postComments[postId] || []).filter((comment) => comment.id !== commentId),
+              },
+              posts: current.posts.map((p) =>
+                p.id === postId ? { ...p, comments_count: Math.max(0, (p.comments_count || 0) - 1) } : p
+              ),
+              backendError: error instanceof Error ? error.message : "Не удалось сохранить комментарий",
+            }));
           });
           const newComment = {
             id: commentId,
+            authorId: state.currentUser.id,
             authorName: state.currentUser.fullName,
             isOfficial: state.currentUser.role === "hoa_official",
             text: commentText,
@@ -824,25 +890,39 @@ export const useAppStore = create<AppState>()(
 
       deleteComment: (postId, commentId) =>
         set((state) => {
+          const removed = (state.postComments[postId] || []).find((comment) => comment.id === commentId);
           void deleteCommentRemote(commentId).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось удалить комментарий" });
+            set((current) => {
+              const list = current.postComments[postId] || [];
+              // Если свежая загрузка уже вернула комментарий, счётчик с сервера тоже верный.
+              const restore = Boolean(removed) && !list.some((comment) => comment.id === commentId);
+              return {
+                postComments: restore ? { ...current.postComments, [postId]: [...list, removed!] } : current.postComments,
+                posts: restore ? current.posts.map((p) =>
+                  p.id === postId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p
+                ) : current.posts,
+                backendError: error instanceof Error ? error.message : "Не удалось удалить комментарий",
+              };
+            });
           });
           return {
             postComments: {
               ...state.postComments,
               [postId]: (state.postComments[postId] || []).filter((comment) => comment.id !== commentId),
             },
+            posts: removed ? state.posts.map((p) =>
+              p.id === postId ? { ...p, comments_count: Math.max(0, (p.comments_count || 0) - 1) } : p
+            ) : state.posts,
           };
         }),
 
       sendMessage: (chatId, text) =>
         set((state) => {
-          const previousMessages = state.messages;
-          const previousChats = state.chats;
           const currentMsgs = state.messages[chatId] || [];
           const now = new Date();
           const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           const newMsg: MessageItem = {
+            createdAt: now.toISOString(),
             id: isSupabaseConfigured() ? crypto.randomUUID() : `msg-${Date.now()}`,
             chatId,
             senderId: state.currentUser.id,
@@ -852,12 +932,21 @@ export const useAppStore = create<AppState>()(
             time: timeStr,
           };
 
-          void persistMessage(chatId, text).catch((error) => {
-            set({
-              messages: previousMessages,
-              chats: previousChats,
+          const previousChat = state.chats.find((c) => c.id === chatId);
+          void persistMessage(chatId, text, newMsg.id).catch((error) => {
+            // Убираем только неотправленное сообщение, не затирая пришедшие за это время.
+            set((current) => ({
+              messages: {
+                ...current.messages,
+                [chatId]: (current.messages[chatId] || []).filter((message) => message.id !== newMsg.id),
+              },
+              chats: current.chats.map((c) =>
+                c.id === chatId && previousChat && c.lastMessage === `Вы: ${text}` && c.lastMessageTime === timeStr
+                  ? { ...c, lastMessage: previousChat.lastMessage, lastMessageTime: previousChat.lastMessageTime }
+                  : c
+              ),
               backendError: error instanceof Error ? error.message : "Не удалось отправить сообщение",
-            });
+            }));
           });
 
           return {
@@ -877,10 +966,23 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
+      markChatRead: (chatId) => {
+        if (!get().chats.find((chat) => chat.id === chatId)?.unreadCount) return;
+        set((state) => ({ chats: state.chats.map((chat) => chat.id === chatId ? { ...chat, unreadCount: 0 } : chat) }));
+        void markChatReadRemote(chatId).catch(() => undefined);
+      },
+
       deleteMessage: (chatId, messageId) =>
         set((state) => {
+          const original = (state.messages[chatId] || []).find((message) => message.id === messageId);
           void deleteMessageRemote(messageId).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось удалить сообщение" });
+            set((current) => ({
+              messages: original ? {
+                ...current.messages,
+                [chatId]: (current.messages[chatId] || []).map((message) => message.id === messageId ? original : message),
+              } : current.messages,
+              backendError: error instanceof Error ? error.message : "Не удалось удалить сообщение",
+            }));
           });
           return {
             messages: {
@@ -936,30 +1038,42 @@ export const useAppStore = create<AppState>()(
         return newChatId;
       },
 
-      addClassified: (item) =>
+      addClassified: (item, details = {}) =>
         set((state) => {
+          const saved = isSupabaseConfigured() && !isUuid(item.id) ? { ...item, id: crypto.randomUUID() } : item;
           void persistClassified({
-            title: item.title,
-            category: item.category,
-            description: item.description,
-            location: item.location,
-            imagePath: item.image,
+            id: saved.id,
+            title: saved.title,
+            category: saved.category,
+            description: saved.description,
+            location: saved.location,
+            price: details.price ?? null,
+            imagePath: details.imagePath,
           }).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось сохранить объявление" });
+            set((current) => ({
+              classifieds: current.classifieds.filter((entry) => entry.id !== saved.id),
+              backendError: error instanceof Error ? error.message : "Не удалось сохранить объявление",
+            }));
           });
-          return { classifieds: [item, ...state.classifieds] };
+          return { classifieds: [saved, ...state.classifieds] };
         }),
 
       deleteClassified: (itemId) =>
         set((state) => {
+          const removed = state.classifieds.find((item) => item.id === itemId);
           void deleteClassifiedRemote(itemId).catch((error) => {
-            set({ backendError: error instanceof Error ? error.message : "Не удалось удалить объявление" });
+            set((current) => ({
+              classifieds: removed && !current.classifieds.some((item) => item.id === itemId) ? [removed, ...current.classifieds] : current.classifieds,
+              backendError: error instanceof Error ? error.message : "Не удалось удалить объявление",
+            }));
           });
           return { classifieds: state.classifieds.filter((item) => item.id !== itemId) };
         }),
 
-      donateToFundraiser: async (fundraiserId, amount) => {
-        await recordFundraiserPayment(fundraiserId, amount);
+      donateToFundraiser: async (fundraiserId, amount, options = {}) => {
+        await recordFundraiserPayment(fundraiserId, amount, options.comment, options.anonymous);
+        // С бэкендом сумма попадёт в сбор только после того, как ОСИ подтвердит поступление.
+        if (isSupabaseConfigured()) return;
         set((state) => ({
           posts: state.posts.map((p) => {
             if (p.fundraiser?.id !== fundraiserId) return p;
@@ -974,10 +1088,12 @@ export const useAppStore = create<AppState>()(
         }));
       },
 
-      createFundraiser: (data) =>
-        set((state) => {
+      createFundraiser: async (data) => {
+          const state = get();
           if (isSupabaseConfigured() && !["hoa_official", "admin"].includes(state.currentUser.role)) {
-            return { backendError: "Только представитель ОСИ может запускать сборы" };
+            const error = new Error("Только представитель ОСИ может запускать сборы");
+            set({ backendError: error.message });
+            throw error;
           }
           const newPostId = isSupabaseConfigured() ? crypto.randomUUID() : `post-fund-${Date.now()}`;
           const newPost: PostWithAuthor = {
@@ -999,7 +1115,7 @@ export const useAppStore = create<AppState>()(
             updated_at: new Date().toISOString(),
             author: {
               id: state.currentUser.id,
-              full_name: "ОСИ «Солнечный»",
+              full_name: `ОСИ «${complexName(state.currentUser.complexName)}»`,
               avatar_url: null,
               role: "hoa_official",
               verified: true,
@@ -1011,7 +1127,7 @@ export const useAppStore = create<AppState>()(
               target_amount: data.targetAmount,
               current_amount: 0,
               currency: data.currency || "₸",
-              payment_url: "https://pay.kaspi.kz",
+              payment_url: data.paymentUrl || null,
               qr_url: null,
               ends_at: data.endsAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
               status: "active",
@@ -1022,14 +1138,18 @@ export const useAppStore = create<AppState>()(
             comments_count: 0,
           };
 
-          void persistFundraiser(newPost, newPost.fundraiser!).catch((error) => {
+          set({ backendError: null });
+          try {
+            await persistFundraiser(newPost, newPost.fundraiser!);
+          } catch (error) {
             set({ backendError: error instanceof Error ? error.message : "Не удалось сохранить сбор" });
-          });
+            throw error;
+          }
 
-          return {
-            posts: [newPost, ...state.posts],
-          };
-        }),
+          set((current) => ({
+            posts: [newPost, ...current.posts.filter((post) => post.id !== newPost.id)],
+          }));
+        },
 
       submitVerificationRequest: async (data) => {
         await submitVerificationRequestRemote(data);

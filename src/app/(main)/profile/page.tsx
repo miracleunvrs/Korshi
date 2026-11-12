@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import NextImage from "next/image";
+import Avatar from "@/components/ui/Avatar";
 import { useRouter } from "next/navigation";
 import { 
   ShieldCheck, 
@@ -26,7 +26,7 @@ import { complexName } from "@/lib/appConfig";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { currentUser, updateUser, posts, logoutUser } = useAppStore();
+  const { currentUser, updateUser, posts, classifieds, logoutUser } = useAppStore();
   const { memberships, switchMembership, inviteFamily, syncMessage } = useOperationsStore();
 
   const [activeTab, setActiveTab] = useState<"posts" | "announcements" | "payments" | "settings">("posts");
@@ -40,7 +40,9 @@ export default function ProfilePage() {
   const [editApartment, setEditApartment] = useState(currentUser.apartmentNumber);
   const [editBuilding, setEditBuilding] = useState(currentUser.buildingNumber);
 
-  const myPosts = posts.filter((p) => p.author?.full_name === currentUser.fullName || p.author_id === currentUser.id);
+  const myPosts = posts.filter((p) => p.author_id === currentUser.id);
+
+  const myClassifieds = classifieds.filter((item) => item.authorId === currentUser.id);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,14 +85,7 @@ export default function ProfilePage() {
       <div className="px-6 pb-6 relative">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-4">
           <div className="relative inline-block">
-            <NextImage
-              src={currentUser.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80"}
-              alt={currentUser.fullName}
-              width={128}
-              height={128}
-              unoptimized
-              className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl object-cover ring-4 ring-white shadow-xl bg-white"
-            />
+            <Avatar url={currentUser.avatarUrl} name={currentUser.fullName} size={128} className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl ring-4 ring-white shadow-xl bg-white" />
             {currentUser.verified && (
               <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center shadow-lg ring-2 ring-white">
                 <ShieldCheck className="w-5 h-5" />
@@ -147,12 +142,12 @@ export default function ProfilePage() {
             <p className="text-[11px] font-semibold text-gray-500">Публикаций</p>
           </div>
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 text-center">
-            <p className="text-lg font-black text-gray-900">5 000 ₸</p>
-            <p className="text-[11px] font-semibold text-gray-500">Взносов в ЖК</p>
+            <p className="text-lg font-black text-gray-900">{myClassifieds.length}</p>
+            <p className="text-[11px] font-semibold text-gray-500">Объявлений</p>
           </div>
           <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 text-center">
-            <p className="text-lg font-black text-green-600">100%</p>
-            <p className="text-[11px] font-semibold text-gray-500">Доверие</p>
+            <p className="text-lg font-black text-green-600">{currentUser.verified ? "Да" : "Нет"}</p>
+            <p className="text-[11px] font-semibold text-gray-500">Статус подтверждён</p>
           </div>
         </div>
 
@@ -207,35 +202,19 @@ export default function ProfilePage() {
           )}
 
           {activeTab === "announcements" && (
-            <div className="p-4 rounded-3xl bg-gray-50 border border-gray-100 flex items-center justify-between">
-              <div className="space-y-1">
-                <span className="px-2 py-0.5 bg-green-100 text-green-800 text-[10px] font-bold rounded-full">
-                  Активно
-                </span>
-                <h4 className="font-bold text-gray-900 text-sm">Продам диван</h4>
-                <p className="text-xs font-bold text-green-600">5 000 ₸</p>
-              </div>
-              <button className="text-xs font-bold text-gray-500 hover:text-red-500">
-                Снять с публикации
-              </button>
+            <div className="space-y-3">
+              {myClassifieds.length === 0 ? <p className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">У вас пока нет объявлений.</p> : myClassifieds.map((item) => (
+                <Link key={item.id} href={`/classifieds/${item.id}`} className="block rounded-2xl border border-gray-100 p-4">
+                  <h2 className="font-bold">{item.title}</h2><p className="text-sm text-green-700">{item.price}</p>
+                </Link>
+              ))}
             </div>
           )}
 
           {activeTab === "payments" && (
-            <div className="space-y-2">
-              <div className="p-4 rounded-3xl bg-gray-50 border border-gray-100 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-gray-900 text-xs">Благоустройство двора</h4>
-                  <p className="text-[11px] text-gray-400">15 мая 2026 • Kaspi Pay</p>
-                </div>
-                <div className="text-right">
-                  <span className="font-extrabold text-green-700 text-sm">+ 5 000 ₸</span>
-                  <p className="text-[10px] text-green-600 font-bold flex items-center justify-end gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Оплачено
-                  </p>
-                </div>
-              </div>
-            </div>
+            <p className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-600">
+              История личных взносов пока не подключена. Для уточнения оплаты обратитесь в управление ЖК.
+            </p>
           )}
 
           {activeTab === "settings" && (
@@ -304,6 +283,13 @@ export default function ProfilePage() {
                 />
               </div>
 
+              {isSupabaseConfigured() ? (
+                <p className="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-600">
+                  Адрес меняется через{" "}
+                  <Link href="/verify-resident" className="font-bold text-green-700">подтверждение проживания</Link>:
+                  управление ЖК проверит новый адрес.
+                </p>
+              ) : (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Дом №</label>
@@ -326,6 +312,7 @@ export default function ProfilePage() {
                   />
                 </div>
               </div>
+              )}
 
               <div className="pt-2">
                 <button

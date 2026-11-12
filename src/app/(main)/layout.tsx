@@ -5,6 +5,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import MobileTopBar from "@/components/layout/MobileTopBar";
 import BackendErrorBanner from "@/components/auth/BackendErrorBanner";
 import PlatformRuntime from "@/components/runtime/PlatformRuntime";
+import VerificationGate from "@/components/auth/VerificationGate";
 
 export default function MainLayout({
   children,
@@ -22,7 +23,7 @@ export default function MainLayout({
         <Sidebar />
 
         <main id="main-content" className="min-h-screen min-w-0 flex-1 overflow-x-clip border-stone-200/80 bg-[#fffefb] pb-24 md:max-w-3xl md:border-x md:pb-8">
-          {children}
+          <VerificationGate>{children}</VerificationGate>
         </main>
 
         <RightWidgetPanel />

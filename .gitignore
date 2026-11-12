@@ -20,3 +20,6 @@ yarn-error.log*
 .next-e2e/
 playwright/.auth/
 supabase/.branches/
+
+# Внутренние заметки аудита безопасности не должны попадать в репозиторий.
+korshi/

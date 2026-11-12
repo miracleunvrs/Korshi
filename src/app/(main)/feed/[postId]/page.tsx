@@ -3,6 +3,7 @@
 import { useState, use } from "react";
 import Link from "next/link";
 import NextImage from "next/image";
+import Avatar from "@/components/ui/Avatar";
 import { ArrowLeft, Send, Heart, Share2, MoreHorizontal, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -66,14 +67,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
         {/* Карточка поста */}
         <div className="p-6 border-b border-gray-100 space-y-4">
           <div className="flex items-center gap-3">
-            <NextImage
-              src={post.author?.avatar_url || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80"}
-              alt=""
-              width={44}
-              height={44}
-              unoptimized
-              className="w-11 h-11 rounded-2xl object-cover ring-2 ring-gray-100 shadow-xs"
-            />
+            <Avatar url={post.author?.avatar_url} name={post.author?.full_name || "Сосед"} size={44} className="w-11 h-11 rounded-2xl ring-2 ring-gray-100 shadow-xs" />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-sm text-gray-900">
@@ -141,7 +135,7 @@ export default function PostDetailPage({ params }: { params: Promise<{ postId: s
                     </div>
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs text-gray-700 leading-relaxed">{c.text}</p>
-                      {c.authorName === currentUser.fullName && (
+                      {(c.authorId ? c.authorId === currentUser.id : c.authorName === currentUser.fullName) && (
                         <button
                           type="button"
                           onClick={() => deleteComment(post.id, c.id)}

@@ -17,32 +17,58 @@ import { useAppStore } from "@/stores/appStore";
 
 export default function HoaManagePage() {
   const router = useRouter();
-  const { createFundraiser } = useAppStore();
+  const { createFundraiser, currentUser } = useAppStore();
+  const canManage = currentUser.role === "admin" || currentUser.role === "hoa_official";
+  const [paymentUrl, setPaymentUrl] = useState("");
+  const [endsOn, setEndsOn] = useState("");
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [targetAmount, setTargetAmount] = useState("1000000");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [formError, setFormError] = useState("");
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if (loading || !title.trim() || !content.trim()) return;
+    const link = paymentUrl.trim();
+    if (link && !/^https:\/\/\S+$/i.test(link)) {
+      setFormError("Ссылка для перевода должна начинаться с https://");
+      return;
+    }
 
     setLoading(true);
+    setFormError("");
 
-    createFundraiser({
-      title: title.trim(),
-      content: content.trim(),
-      targetAmount: parseFloat(targetAmount) || 1000000,
-      currency: "₸",
-    });
-
-    setSuccess(true);
-    setTimeout(() => {
-      router.push("/hoa");
-    }, 1200);
+    try {
+      await createFundraiser({
+        title: title.trim(),
+        content: content.trim(),
+        targetAmount: parseFloat(targetAmount) || 1000000,
+        currency: "₸",
+        paymentUrl: link || undefined,
+        endsAt: endsOn ? new Date(`${endsOn}T23:59:59`).toISOString() : undefined,
+      });
+      setSuccess(true);
+      setTimeout(() => {
+        router.push("/hoa");
+      }, 1200);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Не удалось сохранить сбор");
+      setLoading(false);
+    }
   };
+
+  if (!canManage) {
+    return (
+      <div className="min-h-screen bg-white p-8 flex flex-col items-center justify-center text-center gap-4">
+        <ShieldCheck className="w-10 h-10 text-gray-300" />
+        <p className="text-sm font-semibold text-gray-600">Запускать сборы может только управление ЖК</p>
+        <Link href="/hoa" className="text-sm font-bold text-green-700">Вернуться</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white pb-16">
@@ -72,6 +98,11 @@ export default function HoaManagePage() {
           </div>
         ) : (
           <form onSubmit={handleCreate} className="space-y-4">
+            {formError && (
+              <p role="alert" className="rounded-xl bg-red-50 p-3 text-xs text-red-700">
+                {formError}
+              </p>
+            )}
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
                 Название сбора
@@ -114,13 +145,36 @@ export default function HoaManagePage() {
               />
             </div>
 
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Ссылка для перевода на счёт ОСИ (Kaspi, банк) — необязательно
+              </label>
+              <input
+                type="url"
+                value={paymentUrl}
+                onChange={(e) => setPaymentUrl(e.target.value)}
+                placeholder="https://"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                Дата окончания — необязательно
+              </label>
+              <input
+                type="date"
+                value={endsOn}
+                onChange={(e) => setEndsOn(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
             <div className="p-4 bg-gray-50 border border-gray-200/80 rounded-2xl space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
                 <ShieldCheck className="w-4 h-4 text-green-600" />
-                <span>Официальный расчетный счет ОСИ</span>
+                <span>Как учитываются взносы</span>
               </div>
               <p className="text-[11px] text-gray-500 leading-relaxed">
-                Платежи будут поступать на официальный QR / счет ОСИ в банке с автоматическим отражением в истории сбора.
+                Жители переводят деньги на счёт ОСИ и сообщают о переводе в приложении. В собранную сумму попадают только переводы, которые вы подтвердите на странице сбора после сверки с выпиской.
               </p>
             </div>
 

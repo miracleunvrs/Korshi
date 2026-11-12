@@ -1,6 +1,7 @@
 import type { AppState } from "@/types/app";
 import { DEFAULT_ACCOUNTS } from "./accounts";
-export function appFixtures(): Pick<AppState, "currentUser" | "registeredUsers" | "notifications" | "serviceRequests" | "documents" | "officialVotes" | "finance" | "scheduleItems" | "amenityResources" | "amenityBookings" | "visitorPasses" | "residentVehicles" | "urgentAlert" | "verificationRequests" | "posts" | "postComments" | "chats" | "messages" | "classifieds"> { return {
+const DAY_MS = 24 * 60 * 60 * 1000;
+export function appFixtures(): Pick<AppState, "currentUser" | "registeredUsers" | "notifications" | "serviceRequests" | "documents" | "officialVotes" | "finance" | "scheduleItems" | "amenityResources" | "amenityBookings" | "residentVehicles" | "urgentAlert" | "verificationRequests" | "posts" | "postComments" | "chats" | "messages" | "classifieds"> { return {
 currentUser: DEFAULT_ACCOUNTS[0],
 registeredUsers: DEFAULT_ACCOUNTS,
 notifications: [
@@ -141,8 +142,8 @@ officialVotes: [
           eligibleUnits: 120,
           eligibleWeight: 12000,
           status: "active",
-          startsAt: "1 сентября, 09:00",
-          endsAt: "6 сентября, 21:00",
+          startsAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+          endsAt: new Date(Date.now() + 4 * DAY_MS).toISOString(),
           results: { yes: 4200, no: 840, abstain: 480 },
         },
         {
@@ -156,8 +157,8 @@ officialVotes: [
           eligibleUnits: 120,
           eligibleWeight: 120,
           status: "completed",
-          startsAt: "12 августа, 09:00",
-          endsAt: "19 августа, 21:00",
+          startsAt: new Date(Date.now() - 30 * DAY_MS).toISOString(),
+          endsAt: new Date(Date.now() - 23 * DAY_MS).toISOString(),
           results: { yes: 70, no: 8, abstain: 4 },
           userChoice: "yes",
         },
@@ -194,9 +195,6 @@ amenityResources: [
       ],
 amenityBookings: [
         { id: "booking-1", resourceId: "resource-1", startsAt: "7 сентября, 18:00", endsAt: "7 сентября, 19:30", status: "confirmed" },
-      ],
-visitorPasses: [
-        { id: "pass-1", guestName: "Александр · курьер", kind: "courier", accessCode: "K7P4-28Q", validFrom: "Сегодня, 14:00", validUntil: "Сегодня, 16:00", status: "active" },
       ],
 residentVehicles: [
         { id: "vehicle-1", plate: "777 ABC 02", label: "Белая Toyota" },

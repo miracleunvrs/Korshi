@@ -1,4 +1,6 @@
+import { loadChatMessages } from "@/features/chats/history";
 import { createClient } from "@/lib/supabase/client";
+import { localDateTimeToIso } from "@/lib/datetime";
 import { requireBackend } from "@/lib/supabase/config";
 import { uploadWithRetry } from "@/lib/supabase/uploadWithRetry";
 import type { PostWithAuthor } from "@/types";
@@ -16,7 +18,6 @@ import type {
   OfficialVoteChoice,
   OfficialVoteItem,
   ServiceRequestItem,
-  VisitorPass,
   ResidentVehicle,
   UserAccount,
   VerificationRequest,
@@ -46,7 +47,10 @@ async function profileContext() {
   return { supabase, userId, profile: data as any };
 }
 
-export async function persistPost(post: PostWithAuthor) {
+export async function persistPost(
+  post: PostWithAuthor,
+  fundraiser?: NonNullable<PostWithAuthor["fundraiser"]>,
+) {
   if (!configured()) return post.id;
   const { supabase, userId, profile } = await profileContext();
   if (!profile.complex_id) throw new Error("Профиль ещё не привязан к ЖК");
@@ -75,71 +79,56 @@ export async function persistPost(post: PostWithAuthor) {
   }
 
   const postId = isUuid(post.id) ? post.id : crypto.randomUUID();
-  const { error } = await supabase.from("posts").insert({
-    id: postId,
-    author_id: userId,
-    complex_id: profile.complex_id,
-    building_id: buildingId,
-    entrance_id: entranceId,
-    type: post.type,
-    title: post.title,
-    content: post.content,
-    status: post.status,
-    is_official: post.is_official,
-    territory: post.territory,
-    price: post.price,
-    currency: post.currency || "KZT",
-  });
-  if (error) throw error;
-
-  if (post.attachments?.length) {
-    const attachments = post.attachments
+  const activeFundraiser = fundraiser ||
+    (post.type === "fundraiser" ? post.fundraiser : undefined);
+  const { data, error } = await supabase.rpc("create_post_bundle", {
+    p_post: {
+      id: postId,
+      building_id: buildingId,
+      entrance_id: entranceId,
+      type: post.type,
+      title: post.title,
+      content: post.content,
+      status: post.status,
+      is_official: post.is_official,
+      territory: post.territory,
+      price: post.price,
+      currency: post.currency || "KZT",
+    },
+    p_attachments: (post.attachments || [])
       .filter((attachment) => attachment.url)
       .map((attachment) => ({
-        post_id: postId,
         url: attachment.url,
         type: attachment.type,
         name: attachment.name,
         size: attachment.size,
-      }));
-    if (attachments.length) {
-      const result = await supabase.from("post_attachments").insert(attachments);
-      if (result.error) throw result.error;
-    }
-  }
-
-  if (post.poll) {
-    const { data: poll, error: pollError } = await supabase
-      .from("polls")
-      .insert({
-        post_id: postId,
-        is_multiple: post.poll.is_multiple,
-        ends_at: post.poll.ends_at,
-      })
-      .select("id")
-      .single();
-    if (pollError) throw pollError;
-    const options = post.poll.options.map((option, position) => ({
-      poll_id: poll.id,
-      text: option.text,
-      position,
-    }));
-    if (options.length) {
-      const result = await supabase.from("poll_options").insert(options);
-      if (result.error) throw result.error;
-    }
-  }
-
-  if (post.initiative) {
-    const result = await supabase.from("initiatives").insert({
-      post_id: postId,
+      })),
+    p_poll: post.poll ? {
+      is_multiple: post.poll.is_multiple,
+      ends_at: post.poll.ends_at,
+      options: post.poll.options.map((option, position) => ({
+        text: option.text,
+        position,
+      })),
+    } : null,
+    p_initiative: post.initiative ? {
       stage: post.initiative.stage,
       goal: post.initiative.goal,
-    });
-    if (result.error) throw result.error;
-  }
+    } : null,
+    p_fundraiser: activeFundraiser ? {
+      id: isUuid(activeFundraiser.id) ? activeFundraiser.id : null,
+      initiative_id: isUuid(activeFundraiser.initiative_id) ? activeFundraiser.initiative_id : null,
+      target_amount: activeFundraiser.target_amount,
+      currency: activeFundraiser.currency === "₸" ? "KZT" : activeFundraiser.currency,
+      payment_url: activeFundraiser.payment_url,
+      qr_url: activeFundraiser.qr_url,
+      ends_at: activeFundraiser.ends_at,
+      status: activeFundraiser.status,
+    } : null,
+  });
+  if (error) throw error;
 
-  return postId;
+  return typeof data === "string" ? data : postId;
 }
 
 export async function deletePost(postId: string) {
@@ -149,27 +138,14 @@ export async function deletePost(postId: string) {
 }
 
 export async function persistFundraiser(post: PostWithAuthor, fundraiser: NonNullable<PostWithAuthor["fundraiser"]>) {
-  const postId = await persistPost(post);
-  if (!configured()) return postId;
-  const { error } = await (createClient() as any).from("fundraisers").insert({
-    id: isUuid(fundraiser.id) ? fundraiser.id : crypto.randomUUID(),
-    post_id: postId,
-    initiative_id: isUuid(fundraiser.initiative_id) ? fundraiser.initiative_id : null,
-    target_amount: fundraiser.target_amount,
-    currency: fundraiser.currency === "₸" ? "KZT" : fundraiser.currency,
-    payment_url: fundraiser.payment_url,
-    qr_url: fundraiser.qr_url,
-    ends_at: fundraiser.ends_at,
-    status: fundraiser.status,
-  });
-  if (error) throw error;
-  return postId;
+  return persistPost(post, fundraiser);
 }
 
-export async function persistComment(postId: string, content: string) {
+export async function persistComment(postId: string, content: string, commentId?: string) {
   if (!configured() || !isUuid(postId)) return;
   const { supabase, userId } = await profileContext();
   const { error } = await supabase.from("comments").insert({
+    ...(isUuid(commentId) ? { id: commentId } : {}),
     post_id: postId,
     author_id: userId,
     content,
@@ -222,19 +198,22 @@ export async function persistInitiativeSupport(initiativeId: string) {
   if (error && error.code !== "23505") throw error;
 }
 
-export async function persistMessage(chatId: string, content: string) {
+export async function persistMessage(chatId: string, content: string, messageId?: string) {
   if (!configured()) return;
   if (!isUuid(chatId)) {
-    throw new Error("Этот чат ещё не подключён к серверу. Обновите список чатов после применения миграций.");
+    throw new Error("Этот чат недоступен. Обновите список чатов и попробуйте снова.");
   }
   const { supabase, userId } = await profileContext();
+  // The client id doubles as the idempotency key, so the optimistic copy and
+  // the stored row are the same message and a replay cannot create a second one.
   const { error } = await supabase.from("messages").insert({
+    ...(isUuid(messageId) ? { id: messageId, client_msg_id: messageId } : {}),
     chat_id: chatId,
     sender_id: userId,
     content,
     type: "text",
   });
-  if (error) throw error;
+  if (error && !(error.code === "23505" && isUuid(messageId))) throw error;
 }
 
 export async function createDirectChat(targetUserId: string) {
@@ -292,6 +271,7 @@ export async function submitVerificationRequest(data: {
 }
 
 export async function persistClassified(data: {
+  id?: string;
   title: string;
   category: string;
   price?: number | null;
@@ -304,6 +284,7 @@ export async function persistClassified(data: {
   const { supabase, userId, profile } = await profileContext();
   if (!profile.complex_id) throw new Error("Профиль ещё не привязан к ЖК");
   const { error } = await supabase.from("classifieds").insert({
+    ...(isUuid(data.id) ? { id: data.id } : {}),
     author_id: userId,
     complex_id: profile.complex_id,
     title: data.title,
@@ -349,6 +330,198 @@ export async function recordFundraiserPayment(
   if (error) throw error;
 }
 
+export type ResidentRecord = {
+  userId: string;
+  membershipId: string | null;
+  fullName: string;
+  phone: string;
+  address: string;
+  role: string;
+  verified: boolean;
+};
+
+/** Registry of the complex for management: profiles joined with their memberships. */
+export async function loadResidents(): Promise<ResidentRecord[]> {
+  if (!configured()) return [];
+  const supabase = createClient() as any;
+  const [profilesResult, membershipsResult] = await Promise.all([
+    supabase.from("profiles")
+      .select("id, full_name, phone, verified, apartment:apartments(number, entrance:entrances(number, building:buildings(number)))")
+      .order("full_name", { ascending: true }).limit(1000),
+    supabase.from("complex_memberships").select("id, user_id, role, is_active, complex_id"),
+  ]);
+  if (profilesResult.error) throw profilesResult.error;
+  if (membershipsResult.error) throw membershipsResult.error;
+  const { data: complexId } = await supabase.rpc("auth_user_complex_id");
+  const memberships = new Map<string, any>();
+  for (const membership of membershipsResult.data || []) {
+    if (membership.complex_id !== complexId) continue;
+    const known = memberships.get(membership.user_id);
+    if (!known || membership.is_active) memberships.set(membership.user_id, membership);
+  }
+  return (profilesResult.data || []).map((profile: any) => {
+    const apartment = relation<any>(profile.apartment);
+    const entrance = relation<any>(apartment?.entrance);
+    const building = relation<any>(entrance?.building);
+    const membership = memberships.get(profile.id);
+    return {
+      userId: profile.id,
+      membershipId: membership?.id || null,
+      fullName: profile.full_name || "Без имени",
+      phone: profile.phone || "",
+      address: apartment ? `Дом ${building?.number ?? "—"}, подъезд ${entrance?.number ?? "—"}, кв. ${apartment.number}` : "Адрес не указан",
+      role: membership?.role || "owner",
+      verified: Boolean(profile.verified),
+    };
+  });
+}
+
+export async function setMemberRole(membershipId: string, role: string) {
+  if (!configured() || !isUuid(membershipId)) return;
+  const { error } = await (createClient() as any).rpc("set_member_role", { p_membership_id: membershipId, p_role: role });
+  if (error) throw error;
+}
+
+export async function revokeMemberAccess(membershipId: string) {
+  if (!configured() || !isUuid(membershipId)) return;
+  const { error } = await (createClient() as any).rpc("revoke_member_access", { p_membership_id: membershipId });
+  if (error) throw error;
+}
+
+// --- Контент, который создаёт управление ЖК ---
+
+export async function createOfficialVote(data: { title: string; description: string; basis: "owner" | "area"; quorumPercent: number; startsAt: string; endsAt: string }) {
+  if (!configured()) return;
+  const { error } = await (createClient() as any).rpc("create_official_vote", {
+    p_title: data.title,
+    p_description: data.description,
+    p_basis: data.basis,
+    p_quorum_percent: data.quorumPercent,
+    p_starts_at: localDateTimeToIso(data.startsAt),
+    p_ends_at: localDateTimeToIso(data.endsAt),
+  });
+  if (error) throw error;
+}
+
+async function managementContext() {
+  const supabase = createClient() as any;
+  const userId = await currentUserId();
+  const { data: complexId, error } = await supabase.rpc("auth_user_complex_id");
+  if (error) throw error;
+  if (!complexId) throw new Error("Действие доступно управлению подтверждённого ЖК");
+  return { supabase, userId, complexId: complexId as string };
+}
+
+export async function createScheduleItem(data: { kind: "cleaning" | "maintenance" | "outage" | "event"; title: string; description: string; location: string; startsAt: string; endsAt?: string }) {
+  if (!configured()) return;
+  const { supabase, userId, complexId } = await managementContext();
+  const { error } = await supabase.from("home_schedule_items").insert({
+    complex_id: complexId,
+    created_by: userId,
+    kind: data.kind,
+    title: data.title,
+    description: data.description || null,
+    location: data.location,
+    starts_at: localDateTimeToIso(data.startsAt),
+    ends_at: data.endsAt ? localDateTimeToIso(data.endsAt) : null,
+  });
+  if (error) throw error;
+}
+
+export async function createAmenityResource(data: { name: string; description: string; location: string; capacity?: number; price: number }) {
+  if (!configured()) return;
+  const { supabase, complexId } = await managementContext();
+  const { error } = await supabase.from("amenity_resources").insert({
+    complex_id: complexId,
+    name: data.name,
+    description: data.description || null,
+    location: data.location,
+    capacity: data.capacity || null,
+    price: data.price,
+  });
+  if (error) throw error;
+}
+
+export async function saveBudgetItem(data: { year: number; category: string; planned: number; actual: number }) {
+  if (!configured()) return;
+  const { supabase, complexId } = await managementContext();
+  const { error } = await supabase.from("finance_budget_items").upsert({
+    complex_id: complexId,
+    year: data.year,
+    category: data.category,
+    planned: data.planned,
+    actual: data.actual,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "complex_id,year,category" });
+  if (error) throw error;
+}
+
+// --- Коды-приглашения для квартир ---
+
+export type ApartmentOption = { id: string; label: string };
+export type ApartmentInvite = { id: string; code: string; apartment: string; createdAt: string; expiresAt: string; used: boolean };
+
+export async function loadComplexApartments(): Promise<ApartmentOption[]> {
+  if (!configured()) return [];
+  const { supabase, complexId } = await managementContext();
+  // Справочник квартир открыт для чтения; ЖК отбираем здесь, чтобы не зависеть
+  // от фильтров по вложенным связям.
+  const { data, error } = await supabase.from("apartments")
+    .select("id, number, entrance:entrances(number, building:buildings(number, complex_id))")
+    .limit(5000);
+  if (error) throw error;
+  return (data || []).flatMap((row: any) => {
+    const entrance = relation<any>(row.entrance);
+    const building = relation<any>(entrance?.building);
+    if (building?.complex_id !== complexId) return [];
+    return [{ id: row.id, label: `Дом ${building.number}, подъезд ${entrance?.number}, кв. ${row.number}` }];
+  }).sort((a: ApartmentOption, b: ApartmentOption) => a.label.localeCompare(b.label, "ru", { numeric: true }));
+}
+
+export async function loadApartmentInvites(): Promise<ApartmentInvite[]> {
+  if (!configured()) return [];
+  const { data, error } = await (createClient() as any).from("apartment_invites")
+    .select("id, code, created_at, expires_at, used_at, apartment:apartments(number, entrance:entrances(number, building:buildings(number)))")
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) throw error;
+  return (data || []).map((row: any) => {
+    const apartment = relation<any>(row.apartment);
+    const entrance = relation<any>(apartment?.entrance);
+    const building = relation<any>(entrance?.building);
+    return {
+      id: row.id,
+      code: row.code,
+      apartment: apartment ? `Дом ${building?.number}, подъезд ${entrance?.number}, кв. ${apartment.number}` : "Квартира",
+      createdAt: new Date(row.created_at).toLocaleDateString("ru-RU"),
+      expiresAt: new Date(row.expires_at).toLocaleDateString("ru-RU"),
+      used: Boolean(row.used_at),
+    };
+  });
+}
+
+export async function createApartmentInvite(apartmentId: string) {
+  if (!configured() || !isUuid(apartmentId)) return null;
+  const { data, error } = await (createClient() as any).rpc("create_apartment_invite", { p_apartment_id: apartmentId });
+  if (error) throw error;
+  return relation<any>(data)?.code as string | undefined;
+}
+
+export async function redeemApartmentInvite(code: string): Promise<"ok" | "invalid" | "used" | "expired" | "rate_limited" | "unauthorized"> {
+  if (!configured()) return "invalid";
+  const { data, error } = await (createClient() as any).rpc("redeem_apartment_invite", { p_code: code });
+  if (error) throw error;
+  return data;
+}
+
+export async function reviewFundraiserPayment(paymentId: string, confirmed: boolean) {
+  if (!configured() || !isUuid(paymentId)) return;
+  const { error } = await (createClient() as any).rpc("review_fundraiser_payment", {
+    p_payment_id: paymentId,
+    p_confirmed: confirmed,
+  });
+  if (error) throw error;
+}
+
 export async function persistServiceRequest(
   data: Pick<ServiceRequestItem, "category" | "title" | "description" | "location" | "priority" | "publicForComplex">,
   files: File[] = [],
@@ -376,46 +549,42 @@ export async function persistServiceRequest(
     uploaded.push({ path, file });
   }
 
-  const { error } = await supabase
-    .from("service_requests")
-    .insert({
+  // Заявка и вложения создаются одной транзакцией: при ошибке не остаётся
+  // заявки без фото, а повтор с тем же id не создаёт дубль.
+  const { error } = await supabase.rpc("create_service_request", {
+    p_request: {
       id: requestId,
-      created_by: userId,
-      complex_id: profile.complex_id,
       category: data.category,
       title: data.title,
       description: data.description,
       location: data.location,
       priority: data.priority,
       public_for_complex: data.publicForComplex,
-    });
+    },
+    p_attachments: uploaded.map(({ path, file }) => ({
+      path,
+      file_name: file.name,
+      mime_type: file.type,
+      size_bytes: file.size,
+    })),
+  });
   if (error) {
     if (uploaded.length) await supabase.storage.from("house-media").remove(uploaded.map((item) => item.path));
     throw new Error(error.message);
   }
 
-  // PostgREST applies the SELECT policy to `insert(...).select()` before the
-  // STABLE visibility helper can observe the new row. Read it in a separate
-  // statement so the author can receive the persisted representation.
-  const { data: row, error: readError } = await supabase
+  // Заявка уже создана: если перечитать её не удалось, показываем то, что отправили.
+  const { data: fetched } = await supabase
     .from("service_requests")
     .select("*")
     .eq("id", requestId)
-    .single();
-  if (readError) throw new Error(readError.message);
-
-  if (uploaded.length) {
-    const attachmentResult = await supabase.from("service_request_attachments").insert(uploaded.map(({ path, file }) => ({
-      request_id: requestId,
-      uploader_id: userId,
-      path,
-      file_name: file.name,
-      mime_type: file.type,
-      size_bytes: file.size,
-      kind: "evidence",
-    })));
-    if (attachmentResult.error) throw attachmentResult.error;
-  }
+    .maybeSingle();
+  const now = new Date().toISOString();
+  const row = fetched || {
+    id: requestId, created_by: userId, complex_id: profile.complex_id, category: data.category, title: data.title,
+    description: data.description, location: data.location, status: "submitted", priority: data.priority,
+    public_for_complex: data.publicForComplex, created_at: now, updated_at: now,
+  };
 
   const attachments = await Promise.all(uploaded.map(async ({ path, file }) => ({
     id: path,
@@ -438,6 +607,7 @@ export async function persistServiceRequest(
     priority: row.priority,
     publicForComplex: Boolean(row.public_for_complex),
     assigneeName: row.assignee_name || undefined,
+    assigneeId: row.assignee_id || undefined,
     slaDueAt: row.sla_due_at ? new Date(row.sla_due_at).toLocaleString("ru-RU") : undefined,
     resolutionNote: row.resolution_note || undefined,
     rating: row.rating || undefined,
@@ -469,13 +639,14 @@ export async function persistServiceRequestStatus(
   note?: string,
   assigneeName?: string,
   slaDueAt?: string,
+  assigneeId?: string,
 ) {
   if (!configured() || !isUuid(requestId)) return;
   const { error } = await (createClient() as any).rpc("update_service_request_status", {
     p_request_id: requestId,
     p_status: status,
     p_note: note || null,
-    p_assignee_id: null,
+    p_assignee_id: isUuid(assigneeId) ? assigneeId : null,
     p_assignee_name: assigneeName || null,
     p_sla_due_at: slaDueAt || null,
   });
@@ -652,29 +823,13 @@ export async function persistAmenityBooking(resourceId: string, startsAt: string
   if (!configured() || !isUuid(resourceId)) return null;
   const { data: row, error } = await (createClient() as any).rpc("create_amenity_booking", {
     p_resource_id: resourceId,
-    p_starts_at: startsAt,
-    p_ends_at: endsAt,
+    p_starts_at: localDateTimeToIso(startsAt),
+    p_ends_at: localDateTimeToIso(endsAt),
   });
   if (error) throw error;
   const item = relation<any>(row);
   if (!item) return null;
   return { id: item.id, resourceId: item.resource_id, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: new Date(item.ends_at).toLocaleString("ru-RU"), status: item.status };
-}
-
-export async function persistVisitorPass(data: Pick<VisitorPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">): Promise<VisitorPass | null> {
-  if (!configured()) return null;
-  const { supabase, userId, profile } = await profileContext();
-  if (!profile.complex_id) throw new Error("Профиль ещё не привязан к ЖК");
-  const { data: row, error } = await supabase.from("visitor_passes").insert({
-    complex_id: profile.complex_id,
-    resident_id: userId,
-    guest_name: data.guestName,
-    kind: data.kind,
-    vehicle_plate: data.vehiclePlate || null,
-    valid_until: data.validUntil,
-  }).select("*").single();
-  if (error) throw error;
-  return { id: row.id, guestName: row.guest_name, kind: row.kind, vehiclePlate: row.vehicle_plate || undefined, accessCode: row.access_code, validFrom: new Date(row.valid_from).toLocaleString("ru-RU"), validUntil: new Date(row.valid_until).toLocaleString("ru-RU"), status: row.status };
 }
 
 export async function persistResidentVehicle(plate: string, label: string): Promise<ResidentVehicle | null> {
@@ -687,6 +842,85 @@ export async function persistResidentVehicle(plate: string, label: string): Prom
   return { id: row.id, plate: row.plate, label: row.label || "Автомобиль" };
 }
 
+const CHAT_SELECT = "*";
+const NOTIFICATION_SELECT = "id, type, title, body, data, is_read, created_at";
+
+async function buildChatItems(supabase: any, rows: any[], userId: string): Promise<ChatItem[]> {
+  const summariesResult = await supabase.rpc("chat_summaries");
+  if (summariesResult.error) throw summariesResult.error;
+  const summaries = new Map<string, any>((summariesResult.data || []).map((row: any) => [row.chat_id, row]));
+  return rows.map((chat: any) => {
+    const summary = summaries.get(chat.id);
+    const lastAt = summary?.last_message_at || chat.last_message_at;
+    return {
+      id: chat.id,
+      name: chat.name || "Чат сообщества",
+      type: chat.type,
+      lastMessage: summary?.last_message_at ? chatPreview(summary, userId) : "",
+      lastMessageTime: lastAt ? chatTime(lastAt) : "",
+      lastMessageAt: lastAt || undefined,
+      unreadCount: Number(summary?.unread_count || 0),
+      avatarColor: "bg-green-600",
+      icon: chat.type === "building" ? "🏢" : chat.type === "entrance" ? "🚪" : "💬",
+      isOfficial: chat.is_official,
+    };
+  }).sort((a: ChatItem, b: ChatItem) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+}
+
+function mapNotifications(rows: any[]): AppNotification[] {
+  return rows.map((item: any) => ({
+    id: item.id,
+    type: item.type || "system",
+    title: item.title || "Новое уведомление",
+    body: item.body || "",
+    data: item.data || {},
+    isRead: Boolean(item.is_read),
+    createdAt: new Date(item.created_at).toLocaleString("ru-RU"),
+  }));
+}
+
+/** Chat list with previews and unread counts, plus the newest page of one chat. */
+export async function loadChatUpdate(chatId?: string) {
+  if (!configured()) return null;
+  const supabase = createClient() as any;
+  const userId = await currentUserId();
+  const { data, error } = await supabase.from("chats").select(CHAT_SELECT)
+    .order("last_message_at", { ascending: false, nullsFirst: false }).limit(100);
+  if (error) throw error;
+  const chats = await buildChatItems(supabase, data || [], userId);
+  const messages = chatId && isUuid(chatId) && chats.some((chat) => chat.id === chatId)
+    ? await loadChatMessages(chatId, userId)
+    : null;
+  return { chats, chatId, messages };
+}
+
+export async function loadNotificationList() {
+  if (!configured()) return null;
+  const { data, error } = await (createClient() as any).from("notifications").select(NOTIFICATION_SELECT)
+    .order("created_at", { ascending: false }).limit(100);
+  if (error) throw error;
+  return mapNotifications(data || []);
+}
+
+function chatPreview(summary: any, userId: string) {
+  const text = summary.last_message_type === "image" ? "Фото" : summary.last_message_type === "document" ? "Документ" : summary.last_message || "";
+  const author = summary.last_sender_id === userId ? "Вы" : String(summary.last_sender_name || "Сосед").split(" ")[0];
+  return `${author}: ${text}`;
+}
+
+function chatTime(value: string) {
+  const date = new Date(value);
+  return date.toDateString() === new Date().toDateString()
+    ? date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+
+export async function markChatRead(chatId: string) {
+  if (!configured() || !isUuid(chatId)) return;
+  const { error } = await (createClient() as any).rpc("mark_chat_read", { p_chat_id: chatId });
+  if (error) throw error;
+}
+
 function relation<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] || null : value || null;
 }
@@ -697,7 +931,59 @@ async function signedMediaUrl(supabase: any, path: string | null | undefined) {
   return error ? path : data?.signedUrl || path;
 }
 
-function mapPost(row: any): PostWithAuthor {
+export const POSTS_PAGE = 50;
+const POST_SELECT = "*, author:profiles(id, full_name, avatar_url, role, verified), attachments:post_attachments(*), reactions_agg:reactions(count), comments_agg:comments(count), poll:polls(*, options:poll_options(*)), initiative:initiatives(*), fundraiser:fundraisers(*)";
+
+async function finishPosts(supabase: any, rows: any[], likedPostIds: Set<string>) {
+  return Promise.all(rows.map(async (row: any) => {
+    const post = mapPost(row, likedPostIds);
+    if (post.attachments?.length) {
+      post.attachments = await Promise.all(post.attachments.map(async (attachment) => ({
+        ...attachment,
+        url: await signedMediaUrl(supabase, attachment.url),
+      })));
+    }
+    return post;
+  }));
+}
+
+type PostComment = { id: string; authorId?: string; authorName: string; isOfficial: boolean; text: string; time: string };
+
+/** The page of posts older than `beforeIso`, with likes and comments, for the "show more" button. */
+export async function loadOlderPosts(beforeIso: string): Promise<{ posts: PostWithAuthor[]; comments: Record<string, PostComment[]> }> {
+  if (!configured()) return { posts: [], comments: {} };
+  const supabase = createClient() as any;
+  const userId = await currentUserId();
+  const { data, error } = await supabase.from("posts").select(POST_SELECT)
+    .lt("created_at", beforeIso).order("created_at", { ascending: false }).limit(POSTS_PAGE);
+  if (error) throw error;
+  const rows = data || [];
+  const ids = rows.map((row: any) => row.id);
+  if (!ids.length) return { posts: [], comments: {} };
+  const [likes, commentRows] = await Promise.all([
+    supabase.from("reactions").select("post_id").eq("user_id", userId).in("post_id", ids),
+    supabase.from("comments").select("id, post_id, author_id, content, created_at, author:profiles(full_name, role)")
+      .in("post_id", ids).order("created_at", { ascending: true }).limit(1000),
+  ]);
+  if (likes.error) throw likes.error;
+  if (commentRows.error) throw commentRows.error;
+  const comments: Record<string, PostComment[]> = {};
+  for (const comment of commentRows.data || []) {
+    const author = relation<any>(comment.author);
+    (comments[comment.post_id] ||= []).push({
+      id: comment.id,
+      authorId: comment.author_id,
+      authorName: author?.full_name || "Сосед",
+      isOfficial: author?.role === "hoa_official",
+      text: comment.content,
+      time: new Date(comment.created_at).toLocaleString("ru-RU"),
+    });
+  }
+  const posts = await finishPosts(supabase, rows, new Set((likes.data || []).map((item: any) => item.post_id)));
+  return { posts, comments };
+}
+
+function mapPost({ reactions_agg, comments_agg, ...row }: any, likedPostIds: Set<string>): PostWithAuthor {
   const poll = relation(row.poll);
   const initiative = relation(row.initiative);
   const fundraiser = relation(row.fundraiser);
@@ -711,6 +997,9 @@ function mapPost(row: any): PostWithAuthor {
       verified: false,
     },
     attachments: row.attachments || [],
+    reactions_count: Number(relation<any>(reactions_agg)?.count || 0),
+    comments_count: Number(relation<any>(comments_agg)?.count || 0),
+    liked_by_me: likedPostIds.has(row.id),
     poll: poll ? { ...poll, options: poll.options || [] } : undefined,
     initiative: initiative || undefined,
     fundraiser: fundraiser || undefined,
@@ -739,13 +1028,12 @@ export async function hydrateDomainData() {
     scheduleResult,
     resourcesResult,
     bookingsResult,
-    visitorPassesResult,
     residentVehiclesResult,
   ] = await Promise.all([
-    supabase.from("posts").select("*, author:profiles(id, full_name, avatar_url, role, verified), attachments:post_attachments(*), poll:polls(*, options:poll_options(*)), initiative:initiatives(*), fundraiser:fundraisers(*)").order("created_at", { ascending: false }).limit(50),
-    supabase.from("chats").select("*").order("last_message_at", { ascending: false, nullsFirst: false }).limit(100),
+    supabase.from("posts").select(POST_SELECT).order("created_at", { ascending: false }).limit(POSTS_PAGE),
+    supabase.from("chats").select(CHAT_SELECT).order("last_message_at", { ascending: false, nullsFirst: false }).limit(100),
     supabase.from("classifieds").select("*, author:profiles!classifieds_author_id_fkey(id, full_name, phone)").order("created_at", { ascending: false }).limit(50),
-    supabase.from("notifications").select("id, type, title, body, data, is_read, created_at").order("created_at", { ascending: false }).limit(100),
+    supabase.from("notifications").select(NOTIFICATION_SELECT).order("created_at", { ascending: false }).limit(100),
     supabase.from("service_requests").select("*, events:service_request_events(*, actor:profiles(full_name, role)), attachments:service_request_attachments(*)").order("created_at", { ascending: false }).limit(100),
     supabase.from("house_documents").select("*, publisher:profiles!house_documents_published_by_fkey(full_name)").order("published_at", { ascending: false }).limit(200),
     supabase.from("house_document_acknowledgements").select("document_id").eq("user_id", userId),
@@ -759,7 +1047,6 @@ export async function hydrateDomainData() {
     supabase.from("home_schedule_items").select("*").order("starts_at", { ascending: true }).limit(100),
     supabase.from("amenity_resources").select("*").eq("is_active", true).order("name", { ascending: true }).limit(100),
     supabase.from("amenity_bookings").select("*").eq("user_id", userId).order("starts_at", { ascending: false }).limit(100),
-    supabase.from("visitor_passes").select("*").eq("resident_id", userId).order("valid_until", { ascending: false }).limit(100),
     supabase.from("resident_vehicles").select("*").eq("resident_id", userId).order("created_at", { ascending: false }).limit(20),
   ]);
   if (postsResult.error) throw postsResult.error;
@@ -779,39 +1066,15 @@ export async function hydrateDomainData() {
   if (scheduleResult.error) throw scheduleResult.error;
   if (resourcesResult.error) throw resourcesResult.error;
   if (bookingsResult.error) throw bookingsResult.error;
-  if (visitorPassesResult.error) throw visitorPassesResult.error;
   if (residentVehiclesResult.error) throw residentVehiclesResult.error;
 
-  const chats: ChatItem[] = (chatsResult.data || []).map((chat: any) => ({
-    id: chat.id,
-    name: chat.name || "Чат сообщества",
-    type: chat.type,
-    lastMessage: "",
-    lastMessageTime: chat.last_message_at ? new Date(chat.last_message_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
-    unreadCount: 0,
-    avatarColor: "bg-green-600",
-    icon: chat.type === "building" ? "🏢" : chat.type === "entrance" ? "🚪" : "💬",
-    isOfficial: chat.is_official,
-  }));
+  const chats = await buildChatItems(supabase, chatsResult.data || [], userId);
 
-  const messageResult = chats.length === 0
-    ? { data: [], error: null }
-    : await supabase.from("messages").select("*, sender:profiles(full_name, avatar_url, role)").in("chat_id", chats.map((chat) => chat.id)).order("created_at", { ascending: true }).limit(1000);
-  if (messageResult.error) throw messageResult.error;
   const messagesByChat: Record<string, MessageItem[]> = {};
-  for (const message of messageResult.data || []) {
-    (messagesByChat[message.chat_id] ||= []).push({
-      id: message.id,
-      chatId: message.chat_id,
-      senderId: message.sender_id,
-      senderName: message.sender?.full_name || "Сосед",
-      senderAvatar: message.sender?.avatar_url || undefined,
-      isOfficial: message.sender?.role === "hoa_official",
-      isMe: message.sender_id === userId,
-      text: message.is_deleted ? "Сообщение удалено" : message.content || "",
-      time: new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    });
-  }
+  // Each chat has its own window: a busy room cannot consume another room's limit.
+  await Promise.all(chats.map(async (chat) => {
+    messagesByChat[chat.id] = await loadChatMessages(chat.id, userId);
+  }));
 
   const verificationResult = await supabase
     .from("verification_requests")
@@ -819,7 +1082,7 @@ export async function hydrateDomainData() {
     .order("created_at", { ascending: false })
     .limit(100);
   if (verificationResult.error) throw verificationResult.error;
-  const verificationRequests: VerificationRequest[] = (verificationResult.data || []).map((item: any) => ({
+  const verificationRequests: VerificationRequest[] = await Promise.all((verificationResult.data || []).map(async (item: any) => ({
     id: item.id,
     userId: item.user_id,
     fullName: item.full_name,
@@ -828,22 +1091,28 @@ export async function hydrateDomainData() {
     entranceNumber: item.entrance_number,
     apartmentNumber: item.apartment_number,
     documentType: item.document_type,
-    documentUrl: item.document_path,
+    // Документ лежит в приватном хранилище: проверяющему нужна подписанная ссылка.
+    documentUrl: await signedMediaUrl(supabase, item.document_path),
     status: item.status,
     submittedAt: new Date(item.created_at).toLocaleString("ru-RU"),
-  }));
+    reviewReason: item.review_reason || undefined,
+  })));
 
+  // Только комментарии загруженных постов и начиная с самых новых: иначе лимит
+  // навсегда заняли бы самые старые комментарии ЖК.
   const commentsResult = await supabase
     .from("comments")
-    .select("id, post_id, content, created_at, author:profiles(full_name, role)")
-    .order("created_at", { ascending: true })
-    .limit(500);
+    .select("id, post_id, author_id, content, created_at, author:profiles(full_name, role)")
+    .in("post_id", (postsResult.data || []).map((row: any) => row.id))
+    .order("created_at", { ascending: false })
+    .limit(1000);
   if (commentsResult.error) throw commentsResult.error;
-  const postComments: Record<string, Array<{ id: string; authorName: string; isOfficial: boolean; text: string; time: string }>> = {};
-  for (const comment of commentsResult.data || []) {
+  const postComments: Record<string, Array<{ id: string; authorId?: string; authorName: string; isOfficial: boolean; text: string; time: string }>> = {};
+  for (const comment of (commentsResult.data || []).reverse()) {
     const author = relation(comment.author);
     (postComments[comment.post_id] ||= []).push({
       id: comment.id,
+      authorId: comment.author_id,
       authorName: author?.full_name || "Сосед",
       isOfficial: author?.role === "hoa_official",
       text: comment.content,
@@ -851,16 +1120,10 @@ export async function hydrateDomainData() {
     });
   }
 
-  const posts = await Promise.all((postsResult.data || []).map(async (row: any) => {
-    const post = mapPost(row);
-    if (post.attachments?.length) {
-      post.attachments = await Promise.all(post.attachments.map(async (attachment) => ({
-        ...attachment,
-        url: await signedMediaUrl(supabase, attachment.url),
-      })));
-    }
-    return post;
-  }));
+  const ownReactionsResult = await supabase.from("reactions").select("post_id").eq("user_id", userId);
+  if (ownReactionsResult.error) throw ownReactionsResult.error;
+  const likedPostIds = new Set<string>((ownReactionsResult.data || []).map((item: any) => item.post_id));
+  const posts = await finishPosts(supabase, postsResult.data || [], likedPostIds);
   const classifieds = await Promise.all((classifiedsResult.data || []).map(async (item: any) => ({
     id: item.id,
     title: item.title,
@@ -874,15 +1137,7 @@ export async function hydrateDomainData() {
     authorPhone: relation(item.author)?.phone || "",
     createdAt: new Date(item.created_at).toLocaleDateString("ru-RU"),
   })));
-  const notifications: AppNotification[] = (notificationsResult.data || []).map((item: any) => ({
-    id: item.id,
-    type: item.type || "system",
-    title: item.title || "Новое уведомление",
-    body: item.body || "",
-    data: item.data || {},
-    isRead: Boolean(item.is_read),
-    createdAt: new Date(item.created_at).toLocaleString("ru-RU"),
-  }));
+  const notifications = mapNotifications(notificationsResult.data || []);
   const serviceRequests: ServiceRequestItem[] = await Promise.all((serviceRequestsResult.data || []).map(async (item: any) => ({
     id: item.id,
     userId: item.created_by,
@@ -895,6 +1150,7 @@ export async function hydrateDomainData() {
     priority: item.priority,
     publicForComplex: Boolean(item.public_for_complex),
     assigneeName: item.assignee_name || undefined,
+    assigneeId: item.assignee_id || undefined,
     slaDueAt: item.sla_due_at ? new Date(item.sla_due_at).toLocaleString("ru-RU") : undefined,
     resolutionNote: item.resolution_note || undefined,
     rating: item.rating || undefined,
@@ -962,8 +1218,8 @@ export async function hydrateDomainData() {
       eligibleUnits: Number(item.eligible_units),
       eligibleWeight: Number(item.eligible_weight),
       status: item.status,
-      startsAt: new Date(item.starts_at).toLocaleString("ru-RU"),
-      endsAt: new Date(item.ends_at).toLocaleString("ru-RU"),
+      startsAt: new Date(item.starts_at).toISOString(),
+      endsAt: new Date(item.ends_at).toISOString(),
       results,
       userChoice: ownBallots.get(item.id),
       protocolUrl: item.protocol_path ? await signedMediaUrl(supabase, item.protocol_path) : undefined,
@@ -1009,7 +1265,6 @@ export async function hydrateDomainData() {
   const scheduleItems: HomeScheduleItem[] = (scheduleResult.data || []).map((item: any) => ({ id: item.id, kind: item.kind, title: item.title, description: item.description || "", location: item.location, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: item.ends_at ? new Date(item.ends_at).toLocaleString("ru-RU") : undefined, status: item.status }));
   const amenityResources: AmenityResource[] = (resourcesResult.data || []).map((item: any) => ({ id: item.id, name: item.name, description: item.description || "", location: item.location, capacity: item.capacity || undefined, price: Number(item.price) }));
   const amenityBookings: AmenityBooking[] = (bookingsResult.data || []).map((item: any) => ({ id: item.id, resourceId: item.resource_id, startsAt: new Date(item.starts_at).toLocaleString("ru-RU"), endsAt: new Date(item.ends_at).toLocaleString("ru-RU"), status: item.status }));
-  const visitorPasses: VisitorPass[] = (visitorPassesResult.data || []).map((item: any) => ({ id: item.id, guestName: item.guest_name, kind: item.kind, vehiclePlate: item.vehicle_plate || undefined, accessCode: item.access_code, validFrom: new Date(item.valid_from).toLocaleString("ru-RU"), validUntil: new Date(item.valid_until).toLocaleString("ru-RU"), status: item.status }));
   const residentVehicles: ResidentVehicle[] = (residentVehiclesResult.data || []).map((item: any) => ({ id: item.id, plate: item.plate, label: item.label || "Автомобиль" }));
 
   return {
@@ -1028,7 +1283,6 @@ export async function hydrateDomainData() {
     scheduleItems,
     amenityResources,
     amenityBookings,
-    visitorPasses,
     residentVehicles,
   };
 }

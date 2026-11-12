@@ -8,6 +8,7 @@ const backendOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env
 const backendSocket = backendOrigin.replace(/^http/, "ws");
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1"],
   distDir: process.env.NEXT_DIST_DIR || ".next",
   images: {
     remotePatterns: [
@@ -49,6 +50,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               `img-src 'self' data: blob: ${backendOrigin} https://images.unsplash.com`,
+              `media-src 'self' blob: ${backendOrigin}`,
               `frame-src 'self' blob: ${backendOrigin}`,
               `connect-src 'self' ${backendOrigin} ${backendSocket} https://fonts.gstatic.com ws://localhost:*`,
               "frame-ancestors 'none'",

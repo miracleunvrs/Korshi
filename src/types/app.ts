@@ -21,6 +21,7 @@ export interface UserAccount {
 }
 
 export interface MessageItem {
+  createdAt?: string;
   id: string;
   chatId: string;
   senderId: string;
@@ -30,6 +31,8 @@ export interface MessageItem {
   isMe: boolean;
   text: string;
   time: string;
+  kind?: "text" | "image" | "document";
+  attachmentUrl?: string;
 }
 
 export interface ChatItem {
@@ -38,6 +41,7 @@ export interface ChatItem {
   type: "complex" | "building" | "entrance" | "thematic" | "direct";
   lastMessage: string;
   lastMessageTime: string;
+  lastMessageAt?: string;
   unreadCount: number;
   avatarColor: string;
   icon: string;
@@ -56,6 +60,7 @@ export interface VerificationRequest {
   documentUrl: string;
   status: "pending" | "approved" | "rejected";
   submittedAt: string;
+  reviewReason?: string;
 }
 
 export interface AppNotification {
@@ -100,6 +105,7 @@ export interface ServiceRequestItem {
   priority: ServiceRequestPriority;
   publicForComplex: boolean;
   assigneeName?: string;
+  assigneeId?: string;
   slaDueAt?: string;
   resolutionNote?: string;
   rating?: number;
@@ -120,7 +126,7 @@ export interface ServiceRequestAttachment {
 
 export interface ServiceRequestEvent {
   id: string;
-  kind: "created" | "comment" | "assigned" | "status_changed" | "resolution" | "rated" | "reopened";
+  kind: "created" | "comment" | "assigned" | "status_changed" | "resolution" | "rated" | "reopened" | "merged";
   actorName: string;
   actorRole?: UserRole;
   message?: string;
@@ -229,24 +235,12 @@ export interface AmenityBooking {
   paymentStatus?: "not_required" | "pending" | "paid";
 }
 
-export interface VisitorPass {
-  id: string;
-  guestName: string;
-  kind: "guest" | "courier" | "vehicle";
-  vehiclePlate?: string;
-  accessCode: string;
-  validFrom: string;
-  validUntil: string;
-  status: "active" | "used" | "revoked" | "expired";
-}
-
 export interface ResidentVehicle {
   id: string;
   plate: string;
   label: string;
 }
 
-export type NotificationPreferenceKey = "requests" | "community" | "finance" | "emergency";
 
 export interface EmergencyAlert {
   id: string;
@@ -296,8 +290,6 @@ export interface AppState {
   notifications: AppNotification[];
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
-  notificationPreferences: Record<NotificationPreferenceKey, boolean>;
-  setNotificationPreference: (key: NotificationPreferenceKey, enabled: boolean) => void;
 
   // Заявки в управляющую организацию
   serviceRequests: ServiceRequestItem[];
@@ -311,7 +303,7 @@ export interface AppState {
   updateServiceRequestStatus: (
     requestId: string,
     status: ServiceRequestStatus,
-    options?: { note?: string; assigneeName?: string; slaDueAt?: string },
+    options?: { note?: string; assigneeName?: string; assigneeId?: string; slaDueAt?: string },
   ) => Promise<void>;
 
   // Документы дома
@@ -331,10 +323,8 @@ export interface AppState {
   scheduleItems: HomeScheduleItem[];
   amenityResources: AmenityResource[];
   amenityBookings: AmenityBooking[];
-  visitorPasses: VisitorPass[];
   residentVehicles: ResidentVehicle[];
   createAmenityBooking: (resourceId: string, startsAt: string, endsAt: string) => Promise<void>;
-  createVisitorPass: (data: Pick<VisitorPass, "guestName" | "kind" | "vehiclePlate" | "validUntil">) => Promise<void>;
   addResidentVehicle: (plate: string, label: string) => Promise<void>;
 
   // Экстренные оповещения ОСИ
@@ -345,12 +335,13 @@ export interface AppState {
   // Заявки на верификацию
   verificationRequests: VerificationRequest[];
   approveVerification: (requestId: string) => void;
-  rejectVerification: (requestId: string) => void;
+  rejectVerification: (requestId: string, reason?: string) => void;
 
   // Посты и лента
   posts: PostWithAuthor[];
   addPost: (post: PostWithAuthor) => void;
   deletePost: (postId: string) => void;
+  loadMorePosts: () => Promise<boolean>;
   likePost: (postId: string) => void;
   unlikePost: (postId: string) => void;
   votePoll: (postId: string, optionId: string) => void;
@@ -359,28 +350,32 @@ export interface AppState {
   deleteComment: (postId: string, commentId: string) => void;
 
   // Комментарии
-  postComments: Record<string, Array<{ id: string; authorName: string; isOfficial: boolean; text: string; time: string }>>;
+  postComments: Record<string, Array<{ id: string; authorId?: string; authorName: string; isOfficial: boolean; text: string; time: string }>>;
 
   // Чаты
   chats: ChatItem[];
   messages: Record<string, MessageItem[]>;
   sendMessage: (chatId: string, text: string) => void;
+  markChatRead: (chatId: string) => void;
+  refreshChats: (chatId?: string) => Promise<void>;
+  refreshNotifications: () => Promise<void>;
   deleteMessage: (chatId: string, messageId: string) => void;
   createDirectChatWith: (authorId: string, authorName: string) => Promise<string>;
 
   // Объявления
   classifieds: ClassifiedItem[];
-  addClassified: (item: ClassifiedItem) => void;
+  addClassified: (item: ClassifiedItem, details?: { price?: number | null; imagePath?: string }) => void;
   deleteClassified: (itemId: string) => void;
 
   // Сборы
-  donateToFundraiser: (fundraiserId: string, amount: number) => Promise<void>;
+  donateToFundraiser: (fundraiserId: string, amount: number, options?: { comment?: string; anonymous?: boolean }) => Promise<void>;
   createFundraiser: (data: {
     title: string;
     content: string;
     targetAmount: number;
     currency?: string;
     endsAt?: string;
-  }) => void;
+    paymentUrl?: string;
+  }) => Promise<void>;
   submitVerificationRequest: (data: Omit<VerificationRequest, "id" | "userId" | "status" | "submittedAt" | "documentUrl"> & { documentPath: string }) => Promise<void>;
 }

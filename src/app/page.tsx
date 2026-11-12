@@ -7,16 +7,14 @@ export default async function HomePage() {
     redirect("/feed");
   }
 
+  // redirect() works by throwing, so it must stay outside the try/catch.
+  let target = "/login";
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-
-    if (user) {
-      redirect("/feed");
-    } else {
-      redirect("/login");
-    }
+    if (user) target = "/feed";
   } catch {
-    redirect("/feed");
+    target = "/login";
   }
+  redirect(target);
 }

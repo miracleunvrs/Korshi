@@ -185,7 +185,7 @@ export default function CreatePostPage() {
         authorName: currentUser.fullName,
         authorPhone: currentUser.phone,
         createdAt: "Только что",
-      });
+      }, { price: price ? parseFloat(price) : null, imagePath: imagePath || undefined });
     }
       router.push("/feed");
     } catch (error) {

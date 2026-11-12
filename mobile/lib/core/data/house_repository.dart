@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,10 +9,14 @@ import 'media_limits.dart';
 import 'offline_action_queue.dart';
 
 class HouseRepository {
-  SupabaseClient get _client => SupabaseConfig.client;
+  HouseRepository({SupabaseClient? client}) : _providedClient = client;
+
+  final SupabaseClient? _providedClient;
+  SupabaseClient get _client => _providedClient ?? SupabaseConfig.client;
   final OfflineActionQueue _offlineQueue = OfflineActionQueue();
 
-  bool get isConfigured => !SupabaseConfig.isPlaceholder;
+  bool get isConfigured =>
+      _providedClient != null || !SupabaseConfig.isPlaceholder;
 
   Future<User?> currentUser() async {
     if (!isConfigured) return null;
@@ -57,7 +62,7 @@ class HouseRepository {
     final row = await _client
         .from('profiles')
         .select(
-            'id, complex_id, full_name, phone, avatar_url, verified, bio, apartment:apartments(number, entrance:entrances(number, building:buildings(number)))')
+            'id, complex_id, full_name, phone, avatar_url, verified, bio, apartment:apartments(number, entrance:entrances(id, number, building:buildings(id, number)))')
         .eq('id', user.id)
         .maybeSingle();
     return row == null ? null : Map<String, dynamic>.from(row);
@@ -72,6 +77,79 @@ class HouseRepository {
       'full_name': fullName.trim(),
       'phone': phone.trim(),
     }).eq('id', user.id);
+  }
+
+  /// Redeems a one-time apartment code issued by the HOA. Returns a status
+  /// (`ok`, `invalid`, `used`, `expired`, `rate_limited`) instead of throwing,
+  /// so wrong guesses still count towards the server-side attempt limit.
+  Future<String> redeemApartmentInvite(String code) async {
+    if (!isConfigured) return 'invalid';
+    final result =
+        await _client.rpc('redeem_apartment_invite', params: {'p_code': code});
+    return '$result';
+  }
+
+  /// Последняя заявка на подтверждение: status, review_reason и адрес.
+  Future<Map<String, dynamic>?> loadLatestVerificationRequest() async {
+    if (!isConfigured) return null;
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+    final row = await _client
+        .from('verification_requests')
+        .select(
+            'status, review_reason, building_number, entrance_number, apartment_number, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    return row == null ? null : Map<String, dynamic>.from(row);
+  }
+
+  Future<void> submitVerificationDocument({
+    required String fullName,
+    required String phone,
+    required String buildingNumber,
+    required int entranceNumber,
+    required String apartmentNumber,
+    required String fileName,
+    required List<int> bytes,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw Exception('Требуется авторизация');
+    if (bytes.length > maxUploadBytes) {
+      throw Exception('Размер файла не должен превышать 10 МБ');
+    }
+    final extension = fileName.split('.').last.toLowerCase();
+    if (!allowedUploadExtensions.contains(extension)) {
+      throw Exception('Поддерживаются только JPG, PNG, WEBP и PDF');
+    }
+    final mimeType = mimeTypeForExtension(extension);
+    final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path =
+        '${user.id}/verification/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    await _client.storage.from('house-media').uploadBinary(
+          path,
+          Uint8List.fromList(bytes),
+          fileOptions: FileOptions(contentType: mimeType, upsert: false),
+        );
+    try {
+      await _client.from('verification_requests').insert({
+        'user_id': user.id,
+        'full_name': fullName,
+        'phone': phone.isEmpty ? null : phone,
+        'building_number': buildingNumber,
+        'entrance_number': entranceNumber,
+        'apartment_number': apartmentNumber,
+        'document_type': mimeType,
+        'document_path': path,
+      });
+    } catch (_) {
+      // Заявка не создана — документ без заявки никому не нужен.
+      await _client.storage
+          .from('house-media')
+          .remove([path]).catchError((_) => <FileObject>[]);
+      rethrow;
+    }
   }
 
   Future<String> _signedMediaUrl(String? path) async {
@@ -121,43 +199,64 @@ class HouseRepository {
     if (profile?['verified'] != true) {
       throw Exception('Публикации доступны только подтверждённым жителям');
     }
-
-    final post = await _client
-        .from('posts')
-        .insert({
-          'author_id': user.id,
-          'complex_id': complexId,
-          'type': type,
-          'title': title.trim().isEmpty ? null : title.trim(),
-          'content': content.trim(),
-          'territory': territory,
-          'is_official': false,
-        })
-        .select('id')
-        .single();
-    final postId = '${post['id']}';
-
+    if (!const ['complex', 'building', 'entrance'].contains(territory)) {
+      throw Exception('Выберите аудиторию публикации');
+    }
+    final apartment = profile?['apartment'] as Map<String, dynamic>?;
+    final entrance = apartment?['entrance'] as Map<String, dynamic>?;
+    final building = entrance?['building'] as Map<String, dynamic>?;
+    final buildingId =
+        territory == 'complex' ? null : building?['id'] as String?;
+    final entranceId =
+        territory == 'entrance' ? (entrance?['id'] as String?) : null;
+    if (territory != 'complex' && (buildingId == null || buildingId.isEmpty)) {
+      throw Exception(
+          'Дом не указан в профиле. Уточните адрес перед публикацией');
+    }
+    if (territory == 'entrance' && (entranceId == null || entranceId.isEmpty)) {
+      throw Exception(
+          'Подъезд не указан в профиле. Уточните адрес перед публикацией');
+    }
+    List<String> validOptions = const [];
     if (type == 'poll') {
-      final validOptions = pollOptions.map((item) => item.trim()).where((item) => item.isNotEmpty).toList();
-      if (validOptions.length < 2) throw Exception('Добавьте минимум два варианта ответа');
-      final poll = await _client
-          .from('polls')
-          .insert({'post_id': postId, 'is_multiple': false})
-          .select('id')
-          .single();
-      await _client.from('poll_options').insert([
-        for (var index = 0; index < validOptions.length; index++)
-          {'poll_id': poll['id'], 'text': validOptions[index], 'position': index},
-      ]);
+      validOptions = pollOptions
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      if (validOptions.length < 2) {
+        throw Exception('Добавьте минимум два варианта ответа');
+      }
     }
-
-    if (type == 'initiative') {
-      await _client.from('initiatives').insert({
-        'post_id': postId,
-        'stage': 'proposal',
-        'goal': initiativeGoal?.trim().isNotEmpty == true ? initiativeGoal!.trim() : content.trim(),
-      });
-    }
+    await _client.rpc('create_post_bundle', params: {
+      'p_post': {
+        'type': type,
+        'title': title.trim().isEmpty ? null : title.trim(),
+        'content': content.trim(),
+        'territory': territory,
+        'building_id': buildingId,
+        'entrance_id': entranceId,
+        'is_official': false,
+      },
+      'p_attachments': <Map<String, dynamic>>[],
+      'p_poll': type == 'poll'
+          ? {
+              'is_multiple': false,
+              'options': [
+                for (var index = 0; index < validOptions.length; index++)
+                  {'text': validOptions[index], 'position': index},
+              ],
+            }
+          : null,
+      'p_initiative': type == 'initiative'
+          ? {
+              'stage': 'proposal',
+              'goal': initiativeGoal?.trim().isNotEmpty == true
+                  ? initiativeGoal!.trim()
+                  : content.trim(),
+            }
+          : null,
+      'p_fundraiser': null,
+    });
   }
 
   Future<List<Map<String, dynamic>>> loadChats() async {
@@ -175,14 +274,39 @@ class HouseRepository {
     }));
   }
 
-  Future<List<Map<String, dynamic>>> loadMessages(String chatId) async {
-    final rows = await _client
+  static const messagePageSize = 50;
+
+  RealtimeChannel? watchMessages(String chatId, void Function() onChange) {
+    if (!isConfigured) return null;
+    return _client
+        .channel('housesm-mobile-chat-$chatId')
+        .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'messages',
+            filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'chat_id',
+                value: chatId),
+            callback: (_) => onChange())
+        .subscribe();
+  }
+
+  Future<List<Map<String, dynamic>>> loadMessages(String chatId,
+      {String? beforeCreatedAt, String? beforeId}) async {
+    var query = _client
         .from('messages')
         .select('*, sender:profiles(full_name, avatar_url, role)')
-        .eq('chat_id', chatId)
-        .order('created_at', ascending: true)
-        .limit(100);
-    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+        .eq('chat_id', chatId);
+    if (beforeCreatedAt != null && beforeId != null) {
+      query = query.or(
+          'created_at.lt.$beforeCreatedAt,and(created_at.eq.$beforeCreatedAt,id.lt.$beforeId)');
+    }
+    final rows = await query
+        .order('created_at', ascending: false)
+        .order('id', ascending: false)
+        .limit(messagePageSize);
+    return rows.reversed.map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
   Future<List<Map<String, dynamic>>> loadClassifieds() async {
@@ -217,14 +341,61 @@ class HouseRepository {
     });
   }
 
-  Future<void> sendMessage(String chatId, String content) async {
+  /// Stable idempotency key for one composed message. Generated once per
+  /// draft and reused on every retry, so a lost response after a committed
+  /// insert can never produce a second row.
+  static String newClientMessageId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex =
+        bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  Map<String, dynamic> buildMessagePayload({
+    required String chatId,
+    required String senderId,
+    required String content,
+    String? clientMsgId,
+  }) =>
+      {
+        'chat_id': chatId,
+        'sender_id': senderId,
+        'content': content,
+        'type': 'text',
+        'client_msg_id': clientMsgId ?? newClientMessageId(),
+      };
+
+  /// Sends one message payload. Replays with the same `client_msg_id` are
+  /// absorbed by the server instead of creating duplicates. Payloads without
+  /// a key (queued by older app versions) fall back to a plain insert.
+  Future<void> deliverMessage(Map<String, dynamic> payload) async {
+    if (payload['client_msg_id'] == null) {
+      await _client.from('messages').insert(payload);
+      return;
+    }
+    await _client
+        .from('messages')
+        .upsert(payload, onConflict: 'client_msg_id', ignoreDuplicates: true);
+  }
+
+  Future<OfflineMutationDelivery> sendMessage(
+      String chatId, String content) async {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('Требуется авторизация');
-    final payload = {'chat_id': chatId, 'sender_id': user.id, 'content': content, 'type': 'text'};
+    final payload = buildMessagePayload(
+        chatId: chatId, senderId: user.id, content: content);
     try {
-      await _client.from('messages').insert(payload);
-    } catch (_) {
-      await _offlineQueue.add('message', payload);
+      await deliverMessage(payload);
+      return OfflineMutationDelivery.sent;
+    } catch (error) {
+      if (classifyOfflineFailure(error) != OfflineFailureKind.transient) {
+        rethrow;
+      }
+      await _offlineQueue.add('message', payload, userId: user.id);
+      return OfflineMutationDelivery.queued;
     }
   }
 
@@ -239,7 +410,8 @@ class HouseRepository {
     if (bytes.length > maxUploadBytes) {
       throw Exception('Размер файла не должен превышать 10 МБ');
     }
-    if (!allowedUploadExtensions.contains(fileName.split('.').last.toLowerCase())) {
+    if (!allowedUploadExtensions
+        .contains(fileName.split('.').last.toLowerCase())) {
       throw Exception('Поддерживаются только JPG, PNG, WEBP и PDF');
     }
     final normalizedMimeType = mimeType.toLowerCase();
@@ -252,9 +424,7 @@ class HouseRepository {
         '${user.id}/chats/$chatId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
     for (var attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await _client.storage
-            .from('house-media')
-            .uploadBinary(
+        await _client.storage.from('house-media').uploadBinary(
               path,
               Uint8List.fromList(bytes),
               fileOptions: FileOptions(
@@ -265,7 +435,8 @@ class HouseRepository {
         break;
       } catch (_) {
         if (attempt == 2) rethrow;
-        await Future<void>.delayed(Duration(milliseconds: 300 * (1 << attempt)));
+        await Future<void>.delayed(
+            Duration(milliseconds: 300 * (1 << attempt)));
       }
     }
     await _client.from('messages').insert({
@@ -298,7 +469,7 @@ class HouseRepository {
     return rows.map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
-  Future<void> createServiceRequest({
+  Future<OfflineMutationDelivery> createServiceRequest({
     required String category,
     required String title,
     required String description,
@@ -324,8 +495,18 @@ class HouseRepository {
     };
     try {
       await _client.from('service_requests').insert(payload);
-    } catch (_) {
-      await _offlineQueue.add('service_request', payload);
+      return OfflineMutationDelivery.sent;
+    } catch (error) {
+      if (classifyOfflineFailure(error) != OfflineFailureKind.transient) {
+        rethrow;
+      }
+      await _offlineQueue.add(
+        'service_request',
+        payload,
+        userId: user.id,
+        complexId: '$complexId',
+      );
+      return OfflineMutationDelivery.queued;
     }
   }
 
@@ -335,7 +516,7 @@ class HouseRepository {
         .update({'is_read': true}).eq('id', notificationId);
   }
 
-  Future<void> createClassified({
+  Future<OfflineMutationDelivery> createClassified({
     required String title,
     required String category,
     required String description,
@@ -359,18 +540,50 @@ class HouseRepository {
     };
     try {
       await _client.from('classifieds').insert(payload);
-    } catch (_) {
-      await _offlineQueue.add('classified', payload);
+      return OfflineMutationDelivery.sent;
+    } catch (error) {
+      if (classifyOfflineFailure(error) != OfflineFailureKind.transient) {
+        rethrow;
+      }
+      await _offlineQueue.add(
+        'classified',
+        payload,
+        userId: user.id,
+        complexId: '$complexId',
+      );
+      return OfflineMutationDelivery.queued;
     }
   }
 
-  Future<int> flushOfflineActions() => _offlineQueue.flush((action) async {
+  Future<int> flushOfflineActions() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return 0;
+    String complexId;
+    try {
+      final value = await _client.rpc('auth_user_complex_id');
+      complexId = '$value';
+    } catch (error) {
+      if (classifyOfflineFailure(error) == OfflineFailureKind.transient) {
+        return 0;
+      }
+      rethrow;
+    }
+    return _offlineQueue.flush(
+      (action) async {
+        if (action.type == 'message') {
+          await deliverMessage(action.payload);
+          return;
+        }
         final table = switch (action.type) {
-          'message' => 'messages',
           'service_request' => 'service_requests',
           'classified' => 'classifieds',
           _ => throw Exception('Неизвестное offline-действие'),
         };
         await _client.from(table).insert(action.payload);
-      });
+      },
+      userId: user.id,
+      complexId: complexId,
+      canContinue: () => _client.auth.currentUser?.id == user.id,
+    );
+  }
 }

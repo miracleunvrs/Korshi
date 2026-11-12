@@ -44,13 +44,19 @@ export async function updateSession(request: NextRequest) {
     const isAuthRoute = pathname.startsWith("/auth") || pathname === "/login";
     const isPublicRoute = pathname === "/";
 
+    // API отвечает JSON-ом: редирект на страницу входа клиент не сможет разобрать.
+    if (!user && pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Нужна авторизация" }, { status: 401 });
+    }
+
     if (!user && !isAuthRoute && !isPublicRoute) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
       return NextResponse.redirect(redirectUrl);
     }
 
-    if (user && isAuthRoute) {
+    // Callback должен обменять code даже при живой сессии (например, ссылка сброса пароля).
+    if (user && isAuthRoute && !pathname.startsWith("/auth/callback")) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/feed";
       return NextResponse.redirect(redirectUrl);
@@ -60,6 +66,9 @@ export async function updateSession(request: NextRequest) {
 
     const { pathname } = request.nextUrl;
     const isAuthRoute = pathname.startsWith("/auth") || pathname === "/login";
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Не удалось проверить сессию" }, { status: 503 });
+    }
     if (!isAuthRoute && pathname !== "/") {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";

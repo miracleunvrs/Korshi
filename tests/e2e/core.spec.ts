@@ -14,7 +14,6 @@ const routes = [
   "/emergency",
   "/services",
   "/operations",
-  "/community",
   "/classifieds",
   "/ai",
 ];
@@ -55,7 +54,7 @@ test("mobile navigation and request bottom sheet remain usable", async ({ page }
   await page.getByRole("button", { name: "Закрыть форму" }).click();
 });
 
-for (const route of ["/feed", "/requests", "/operations", "/community"]) {
+for (const route of ["/feed", "/requests", "/operations"]) {
   test(`accessibility: ${route} has no serious or critical violations`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openProtected(page, route);

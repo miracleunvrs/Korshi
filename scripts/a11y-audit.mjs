@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { chromium } from "@playwright/test";
 
 const baseUrl = (process.env.SMOKE_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
-const routes = ["/feed", "/requests", "/operations", "/community"];
+const routes = ["/feed", "/requests", "/operations"];
 const viewports = [{ name: "desktop", width: 1440, height: 900 }, { name: "mobile", width: 375, height: 812 }];
 const browser = await chromium.launch();
 let failed = false;

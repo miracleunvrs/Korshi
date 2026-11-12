@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import NextImage from "next/image";
+import Avatar from "@/components/ui/Avatar";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Home,
@@ -17,17 +17,13 @@ import {
   LogOut,
   ClipboardList,
   Bell,
-  FileText,
-  Vote,
-  Coins,
   Siren,
   Grid2X2,
-  Shield,
-  UsersRound,
+  KeyRound,
   Sparkles,
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
-import { complexName } from "@/lib/appConfig";
+import { AI_ENABLED, complexName } from "@/lib/appConfig";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -54,26 +50,26 @@ export default function Sidebar() {
   const activeServiceRequests = useAppStore((s) => s.serviceRequests.filter((request) => request.status === "submitted" || request.status === "in_progress").length);
   const unreadNotifications = useAppStore((s) => s.notifications.filter((notification) => !notification.isRead).length);
 
+  // Документы, голосования, финансы и сборы собраны в «Мой дом»; доступ и
+  // эксплуатация — в панели управления. Разделы без наполнения в меню не выводим.
+  const isManager = currentUser.role === "admin" || currentUser.role === "hoa_official";
+  const isDispatcher = currentUser.membershipRole === "dispatcher";
   const menuItems = [
     { href: "/feed", label: "Сегодня", icon: Home },
-    { href: "/chats", label: "Мессенджер", icon: MessageSquare, badge: totalUnread > 0 ? totalUnread : undefined },
     { href: "/requests", label: "Заявки", icon: ClipboardList, badge: activeServiceRequests > 0 ? activeServiceRequests : undefined },
+    { href: "/chats", label: "Чаты", icon: MessageSquare, badge: totalUnread > 0 ? totalUnread : undefined },
     { href: "/notifications", label: "Уведомления", icon: Bell, badge: unreadNotifications > 0 ? unreadNotifications : undefined },
-    { href: "/documents", label: "Документы", icon: FileText },
-    { href: "/votes", label: "Голосования", icon: Vote },
-    { href: "/finance", label: "Финансы дома", icon: Coins },
-    { href: "/emergency", label: "Аварийный центр", icon: Siren },
+    { href: "/hoa", label: "Мой дом", icon: Building2 },
     { href: "/services", label: "Сервисы дома", icon: Grid2X2 },
-    { href: "/operations", label: "Доступ и эксплуатация", icon: Shield },
-    { href: "/community", label: "Сообщество", icon: UsersRound },
-    { href: "/ai", label: "Korshi AI", icon: Sparkles },
+    { href: "/operations", label: "Доступ и парковка", icon: KeyRound },
     { href: "/classifieds", label: "Объявления и услуги", icon: Tag },
-    { href: "/hoa", label: "Мой ЖК (ОСИ)", icon: Building2 },
+    { href: "/emergency", label: "Аварийный центр", icon: Siren },
     { href: "/profile", label: "Моя страница", icon: User },
-    { href: "/admin", label: "Панель управления", icon: ShieldAlert, badge: pendingRequests > 0 ? pendingRequests : undefined, isAdmin: true },
+    { href: "/admin", label: "Панель управления", icon: ShieldAlert, badge: pendingRequests > 0 ? pendingRequests : undefined, visible: isManager },
+    { href: "/ai", label: "Korshi AI", icon: Sparkles, visible: AI_ENABLED && (isManager || isDispatcher) },
   ];
 
-  const visibleMenuItems = menuItems.filter((item) => !item.isAdmin || currentUser.role === 'admin' || currentUser.role === 'hoa_official');
+  const visibleMenuItems = menuItems.filter((item) => item.visible !== false);
 
   return (
     <>
@@ -96,14 +92,7 @@ export default function Sidebar() {
           {/* Мини-профиль с кнопкой быстрой смены аккаунта */}
           <div className="space-y-2 rounded-[22px] border border-stone-200/80 bg-white p-2.5 shadow-[0_8px_28px_rgba(41,37,36,.04)]">
             <Link href="/profile" className="flex items-center gap-2.5 group">
-              <NextImage
-                src={currentUser.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80"}
-                alt={currentUser.fullName}
-                width={40}
-                height={40}
-                unoptimized
-                className="w-10 h-10 rounded-xl object-cover ring-2 ring-white shadow-xs shrink-0"
-              />
+              <Avatar url={currentUser.avatarUrl} name={currentUser.fullName} size={40} className="w-10 h-10 rounded-xl ring-2 ring-white shadow-xs shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 text-xs truncate group-hover:text-green-700 transition">
                   {currentUser.fullName}
@@ -128,7 +117,7 @@ export default function Sidebar() {
                   href={item.href}
                   className={`flex min-h-11 items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs font-semibold transition duration-200 sm:text-sm ${
                     isActive
-                      ? item.isAdmin ? "bg-stone-900 text-white font-bold" : "bg-green-800 text-white font-bold shadow-[0_8px_22px_rgba(22,101,52,.14)]"
+                      ? item.href === "/admin" ? "bg-stone-900 text-white font-bold" : "bg-green-800 text-white font-bold shadow-[0_8px_22px_rgba(22,101,52,.14)]"
                       : "text-stone-600 hover:bg-white hover:text-stone-950"
                   }`}
                 >
@@ -137,7 +126,7 @@ export default function Sidebar() {
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== undefined && (
-                    <span className={`px-2 py-0.5 rounded-full text-white text-[10px] font-black ${item.isAdmin ? "bg-amber-600" : "bg-green-600"}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-white text-[10px] font-black ${item.href === "/admin" ? "bg-amber-700" : "bg-green-700"}`}>
                       {item.badge}
                     </span>
                   )}

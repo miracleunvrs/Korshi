@@ -20,6 +20,7 @@ export type PostWithAuthor = Post & {
   attachments?: Database["public"]["Tables"]["post_attachments"]["Row"][];
   comments_count?: number;
   reactions_count?: number;
+  liked_by_me?: boolean;
   poll?: Database["public"]["Tables"]["polls"]["Row"] & {
     options: Database["public"]["Tables"]["poll_options"]["Row"][];
   };
