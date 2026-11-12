@@ -2,6 +2,13 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { authenticate, openProtected } from "./auth";
 
+/** Local datetime-local value a few days ahead; passes may not exceed one year. */
+function soonLocal(days = 7) {
+  const date = new Date(Date.now() + days * 86_400_000);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
 test.beforeEach(async ({ context }) => { await authenticate(context); });
 
 const routes = [
@@ -34,7 +41,7 @@ test("resident can create and revoke a QR pass", async ({ page }) => {
   const dialog = page.getByRole("dialog");
   const guest = `E2E гость ${crypto.randomUUID().slice(0, 8)}`;
   await dialog.getByLabel("Имя гостя").fill(guest);
-  await dialog.getByLabel("Действует до").fill("2030-01-02T12:00");
+  await dialog.getByLabel("Действует до").fill(soonLocal());
   await dialog.getByRole("button", { name: "Создать QR-пропуск" }).click();
   await expect(page.getByText("Пропуск создан — QR уже готов")).toBeVisible();
   const card = page.getByRole("article").filter({ hasText: guest });
