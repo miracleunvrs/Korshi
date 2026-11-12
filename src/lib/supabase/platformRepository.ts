@@ -15,7 +15,23 @@ const QUEUE_KEY = "korshi-platform-sync-queue-v2";
 let activeScope: { userId: string; complexId: string } | null = null;
 let flushing: Promise<{ synced: number; pending: number }> | null = null;
 
+const SCOPE_KEY = "korshi-platform-scope-v1";
+
 export function clearPlatformScope() { activeScope = null; }
+
+// Последний известный ЖК пользователя: без сети по нему ставится очередь.
+// Сервер всё равно сверяет ЖК при отправке (execute_platform_mutation).
+function rememberScope(scope: { userId: string; complexId: string }) {
+  activeScope = scope;
+  try { localStorage.setItem(SCOPE_KEY, JSON.stringify(scope)); } catch { /* storage unavailable */ }
+}
+
+function storedScope(userId: string) {
+  try {
+    const value = JSON.parse(localStorage.getItem(SCOPE_KEY) || "null");
+    return value?.userId === userId && typeof value.complexId === "string" ? value as { userId: string; complexId: string } : null;
+  } catch { return null; }
+}
 /**
  * Блокирует отложенные действия текущего пользователя, привязанные к другому
  * ЖК. Вызывается после переключения активного объекта: молчаливое выполнение
@@ -80,7 +96,7 @@ export async function loadPlatformSnapshot() {
   if (context.error) throw context.error;
   // До подтверждения проживания контекста ЖК нет и загружать нечего.
   if (!context.data) return null;
-  activeScope = { userId: authData.user.id, complexId: context.data };
+  rememberScope({ userId: authData.user.id, complexId: context.data });
 
   const queries = await Promise.all([
     supabase.from("complex_memberships").select("*, complex:complexes(name,address), apartment:apartments(number, entrance:entrances(number, building:buildings(number)))").order("created_at"),
@@ -113,13 +129,20 @@ export async function syncPlatformMutation(mutation: PlatformMutation) {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Требуется авторизация");
-  if (!activeScope || activeScope.userId !== session.user.id) {
+  let scope = activeScope?.userId === session.user.id ? activeScope : null;
+  if (!scope && !navigator.onLine) {
+    scope = storedScope(session.user.id);
+    if (!scope) throw new Error("Нет сети. Действие можно будет сохранить, когда приложение хотя бы раз загрузится онлайн.");
+    activeScope = scope;
+  }
+  if (!scope) {
     const { data, error } = await supabase.rpc("auth_user_complex_id");
     if (error) throw error;
     if (!data) throw new Error("Действие станет доступно после подтверждения проживания");
-    activeScope = { userId: session.user.id, complexId: data };
+    scope = { userId: session.user.id, complexId: data };
+    rememberScope(scope);
   }
-  const item: PendingMutation = { id: crypto.randomUUID(), ...activeScope, mutation,
+  const item: PendingMutation = { id: crypto.randomUUID(), ...scope, mutation,
     createdAt: new Date().toISOString(), attempts: 0, status: "pending", nextAttemptAt: 0 };
   // Emergency intent must never be replayed later as if it were a fresh incident.
   if (isSos) {

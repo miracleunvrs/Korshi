@@ -10,7 +10,10 @@ function soonLocal(days = 7) {
 
 test("offline pass is queued without an active QR", async ({ page, context }) => {
   await authenticate(context);
+  // Очередь привязывается к ЖК, который приложение узнаёт после загрузки.
+  const scopeLoaded = page.waitForResponse((response) => response.url().includes("/rpc/auth_user_complex_id") && response.ok());
   await openProtected(page, "/operations");
+  await scopeLoaded;
   await page.getByRole("button", { name: "Новый пропуск" }).click();
   const dialog = page.getByRole("dialog");
   const guest = `Offline ${crypto.randomUUID().slice(0, 8)}`;
