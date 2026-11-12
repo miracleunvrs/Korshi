@@ -3,37 +3,26 @@
 import { useState } from "react";
 import Link from "next/link";
 import Avatar from "@/components/ui/Avatar";
-import { useRouter } from "next/navigation";
 import { 
+  Settings,
   ShieldCheck, 
-  MapPin, 
   Phone, 
   Edit3, 
-  Tag, 
-  CreditCard, 
-  Bell, 
   X,
   CheckCircle2,
-  Calendar,
   Building2,
   Share2,
-  LogOut
 } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
-import { useOperationsStore } from "@/stores/operationsStore";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { complexName } from "@/lib/appConfig";
 import { resizeAvatar, uploadAvatar } from "@/lib/avatar";
 
 export default function ProfilePage() {
-  const router = useRouter();
-  const { currentUser, updateUser, posts, classifieds, logoutUser } = useAppStore();
-  const { memberships, switchMembership, inviteFamily, syncMessage } = useOperationsStore();
+  const { currentUser, updateUser, posts, classifieds } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<"posts" | "announcements" | "payments" | "settings">("posts");
+  const [activeTab, setActiveTab] = useState<"posts" | "announcements" | "payments">("posts");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [invitePhone, setInvitePhone] = useState("");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState("");
 
@@ -72,17 +61,6 @@ export default function ProfilePage() {
     setIsEditModalOpen(false);
   };
 
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await logoutUser();
-      router.replace("/login");
-      router.refresh();
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#fffefb] pb-12">
       {/* Обложка профиля (Cover Banner) */}
@@ -114,6 +92,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link href="/settings" className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition">
+              <Settings className="w-3.5 h-3.5" /> Настройки
+            </Link>
             <button
               onClick={() => setIsEditModalOpen(true)}
               className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
@@ -177,7 +158,6 @@ export default function ProfilePage() {
             { id: "posts", label: "Мои записи" },
             { id: "announcements", label: "Объявления" },
             { id: "payments", label: "История взносов" },
-            { id: "settings", label: "Настройки" },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -237,35 +217,6 @@ export default function ProfilePage() {
             </p>
           )}
 
-          {activeTab === "settings" && (
-            <div className="space-y-4 max-w-md">
-              <section className="rounded-3xl border border-stone-200 bg-white p-4"><div className="flex items-center gap-3"><Building2 className="h-5 w-5 text-green-800" /><div><p className="text-sm font-black text-stone-950">Мои объекты</p><p className="text-[10px] text-stone-500">Можно привязать несколько квартир и ЖК</p></div></div><div className="mt-3 space-y-2">{memberships.map((membership) => <button key={membership.id} onClick={() => switchMembership(membership.id)} className={`w-full rounded-2xl border p-3 text-left transition ${membership.isActive ? "border-green-300 bg-green-50" : "border-stone-200 bg-stone-50"}`}><span className="flex items-center justify-between gap-2"><span className="text-xs font-extrabold text-stone-900">ЖК «{membership.complexName}»</span>{membership.isActive && <span className="rounded-full bg-green-700 px-2 py-1 text-[9px] font-extrabold text-white">Активен</span>}</span><span className="mt-1 block text-[10px] text-stone-500">Дом {membership.building} · подъезд {membership.entrance} · кв. {membership.apartment} · {membership.role === "owner" ? "собственник" : "член семьи"}</span></button>)}</div></section>
-              <form onSubmit={(event) => { event.preventDefault(); if (invitePhone.trim()) { void inviteFamily(invitePhone.trim()); setInvitePhone(""); } }} className="rounded-3xl border border-violet-200 bg-violet-50 p-4"><p className="text-sm font-black text-violet-950">Пригласить члена семьи</p><p className="mt-1 text-[10px] leading-4 text-violet-700">Приглашённый получит роль только в выбранной квартире.</p><div className="mt-3 flex gap-2"><input type="tel" value={invitePhone} onChange={(event) => setInvitePhone(event.target.value)} placeholder="+7 777 000 00 00" className="min-h-11 min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 text-xs" /><button className="rounded-xl bg-violet-700 px-4 text-xs font-extrabold text-white">Пригласить</button></div>{syncMessage && <p className="mt-2 text-[10px] font-bold text-violet-800">{syncMessage}</p>}</form>
-              <div className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl">
-                <div>
-                  <p className="font-bold text-xs text-gray-900">Уведомления ОСИ</p>
-                  <p className="text-[10px] text-gray-400">Плановые работы, отключения воды и электричества</p>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400">В настройках ОСИ</span>
-              </div>
-              <div className="flex items-center justify-between p-3.5 bg-gray-50 rounded-2xl">
-                <div>
-                  <p className="font-bold text-xs text-gray-900">Контактный телефон</p>
-                  <p className="text-[10px] text-gray-400">Телефон используется только как контакт в профиле</p>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400">Не для входа</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="w-full flex items-center justify-center gap-2 p-3.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-2xl text-xs font-bold disabled:opacity-50 transition"
-              >
-                <LogOut className="w-4 h-4" />
-                {isLoggingOut ? "Выход..." : "Выйти из аккаунта"}
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

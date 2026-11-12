@@ -65,6 +65,7 @@ export default function Sidebar() {
     { href: "/classifieds", label: "Объявления и услуги", icon: Tag },
     { href: "/emergency", label: "Аварийный центр", icon: Siren },
     { href: "/profile", label: "Моя страница", icon: User },
+    { href: "/settings", label: "Настройки", icon: Settings },
     { href: "/admin", label: "Панель управления", icon: ShieldAlert, badge: pendingRequests > 0 ? pendingRequests : undefined, visible: isManager },
     { href: "/ai", label: "Korshi AI", icon: Sparkles, visible: AI_ENABLED && (isManager || isDispatcher) },
   ];
