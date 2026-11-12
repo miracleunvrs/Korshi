@@ -3787,6 +3787,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_building_with_apartments: {
+        Args: {
+          p_apartments_per_entrance: number
+          p_entrances: number
+          p_first_apartment?: number
+          p_number: string
+        }
+        Returns: string
+      }
       create_direct_chat: { Args: { p_target_user: string }; Returns: string }
       create_group_chat: {
         Args: { p_member_ids?: string[]; p_name: string }
@@ -3896,6 +3905,15 @@ export type Database = {
       legacy_role_for_membership: {
         Args: { p_role: string }
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      manage_group_chat: {
+        Args: {
+          p_action: string
+          p_chat_id: string
+          p_member_ids?: string[]
+          p_name?: string
+        }
+        Returns: string
       }
       mark_chat_read: { Args: { p_chat_id: string }; Returns: undefined }
       mark_overdue_service_requests: { Args: never; Returns: number }

@@ -24,6 +24,7 @@ import { POSTS_PAGE } from "@/lib/supabase/repository";
 import type { PostWithAuthor } from "@/types";
 import TodayOverview from "@/components/feed/TodayOverview";
 import { complexName } from "@/lib/appConfig";
+import { reportBackendError } from "@/lib/reportError";
 
 export default function FeedPage() {
   const [activeChip, setActiveChip] = useState("Весь ЖК");
@@ -172,7 +173,7 @@ export default function FeedPage() {
               ) : notifications.map((notification) => (
                 <button
                   key={notification.id}
-                  onClick={() => { void markNotificationRead(notification.id).catch(() => undefined); }}
+                  onClick={() => { void markNotificationRead(notification.id).catch(reportBackendError("Уведомление не отмечено прочитанным")); }}
                   className={`w-full border-b border-gray-50 px-4 py-3 text-left transition hover:bg-gray-50 ${notification.isRead ? "opacity-60" : "bg-green-50/60"}`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -230,7 +231,7 @@ export default function FeedPage() {
             </div>
           </div>
           <button
-            onClick={() => { void acknowledgeUrgentAlert().catch(() => undefined); }}
+            onClick={() => { void acknowledgeUrgentAlert().catch(reportBackendError("Оповещение не подтверждено")); }}
             className="text-white/80 hover:text-white p-1 hover:bg-white/10 rounded-full transition"
             aria-label="Подтвердить ознакомление"
           >

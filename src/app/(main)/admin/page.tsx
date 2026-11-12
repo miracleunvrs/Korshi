@@ -35,6 +35,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { activeVotes } from "@/features/dashboard/summary";
 import ContentManager from "@/components/admin/ContentManager";
 import InviteManager from "@/components/admin/InviteManager";
+import PropertyManager from "@/components/admin/PropertyManager";
 
 const roleLabels: Record<string, string> = {
   owner: "Собственник", tenant: "Арендатор", family: "Член семьи", chair: "Председатель ОСИ",
@@ -55,7 +56,7 @@ export default function AdminPage() {
     finance,
   } = useAppStore();
 
-  const [activeTab, setActiveTab] = useState<"requests" | "residents" | "alert" | "stats" | "content" | "invites">("stats");
+  const [activeTab, setActiveTab] = useState<"requests" | "residents" | "alert" | "stats" | "content" | "invites" | "property">("stats");
   const [selectedDocImage, setSelectedDocImage] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<{ id: string; reason: string } | null>(null);
   const [broadcastStatus, setBroadcastStatus] = useState("");
@@ -207,6 +208,7 @@ export default function AdminPage() {
             { id: "stats", label: "Обзор" },
             { id: "requests", label: "Заявки на верификацию", badge: pendingRequests.length },
             { id: "residents", label: "Реестр жильцов" },
+            { id: "property", label: "Дома и парковка" },
             { id: "invites", label: "Коды для квартир" },
             { id: "content", label: "Контент дома" },
             { id: "alert", label: "Экстренное оповещение" },
@@ -453,6 +455,7 @@ export default function AdminPage() {
 
         {activeTab === "content" && <ContentManager />}
         {activeTab === "invites" && <InviteManager />}
+        {activeTab === "property" && <PropertyManager />}
 
         {/* Вкладка 3: Экстренное оповещение */}
         {activeTab === "alert" && (

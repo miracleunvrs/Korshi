@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { reviewFundraiserPayment } from "@/lib/supabase/repository";
 import { complexName } from "@/lib/appConfig";
+import { reportBackendError } from "@/lib/reportError";
 
 type PaymentStatus = "pending" | "confirmed" | "rejected";
 type PaymentRow = { id: string; name: string; date: string; amount: number; status: PaymentStatus; mine: boolean };
@@ -101,7 +102,7 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
     try {
       await reviewFundraiserPayment(paymentId, confirmed);
       setPaymentsVersion((version) => version + 1);
-      await hydrateDomainData().catch(() => undefined);
+      await hydrateDomainData().catch(reportBackendError("Не удалось обновить данные"));
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : "Не удалось обновить взнос");
     } finally {

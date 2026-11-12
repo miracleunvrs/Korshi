@@ -15,6 +15,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useAppStore, type AppNotification } from "@/stores/appStore";
+import { reportBackendError } from "@/lib/reportError";
 
 const deliveredEvents = [
   ["Заявки", "Новые заявки, назначения, смена статуса и просьба оценить работу"],
@@ -75,7 +76,7 @@ export default function NotificationsPage() {
         </section> : visible.length === 0 ? <div className="rounded-[24px] border border-dashed border-stone-300 bg-white px-6 py-16 text-center"><Bell className="mx-auto h-9 w-9 text-stone-300" /><h2 className="mt-4 font-extrabold text-stone-900">Новых уведомлений нет</h2><p className="mt-1 text-sm text-stone-500">Всё важное уже просмотрено.</p></div> : <div className="space-y-2">{visible.map((notification, index) => {
           const meta = notificationMeta(notification);
           const Icon = meta.icon;
-          return <Link key={notification.id} href={meta.href} onClick={() => void markRead(notification.id).catch(() => undefined)} className={`reveal-up flex min-h-[88px] items-start gap-3 rounded-[22px] border p-4 transition hover:-translate-y-0.5 hover:border-stone-300 ${notification.isRead ? "border-stone-200 bg-white/70" : "border-green-200 bg-white shadow-[0_10px_30px_rgba(22,101,52,.07)]"}`} style={{ animationDelay: `${index * 45}ms` }}>
+          return <Link key={notification.id} href={meta.href} onClick={() => void markRead(notification.id).catch(reportBackendError("Уведомление не отмечено прочитанным"))} className={`reveal-up flex min-h-[88px] items-start gap-3 rounded-[22px] border p-4 transition hover:-translate-y-0.5 hover:border-stone-300 ${notification.isRead ? "border-stone-200 bg-white/70" : "border-green-200 bg-white shadow-[0_10px_30px_rgba(22,101,52,.07)]"}`} style={{ animationDelay: `${index * 45}ms` }}>
             <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${meta.tone}`}><Icon className="h-5 w-5" aria-hidden="true" /></span><span className="min-w-0 flex-1"><span className="flex items-start justify-between gap-3"><span className="text-sm font-extrabold text-stone-950">{notification.title}</span><span className="shrink-0 text-[10px] font-semibold text-stone-400">{notification.createdAt}</span></span><span className="mt-1 block text-xs leading-5 text-stone-600">{notification.body}</span></span><ChevronRight className="mt-3 h-4 w-4 shrink-0 text-stone-300" aria-hidden="true" />
           </Link>;
         })}</div>}

@@ -22,7 +22,7 @@ export default function InviteManager() {
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    void loadApartmentInvites().then(setInvites).catch(() => undefined);
+    void loadApartmentInvites().then(setInvites).catch((cause) => setError(cause instanceof Error ? cause.message : "Не удалось загрузить выданные коды"));
   }, [version]);
 
   const issue = async () => {

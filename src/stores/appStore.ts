@@ -917,7 +917,7 @@ export const useAppStore = create<AppState>()(
       markChatRead: (chatId) => {
         if (!get().chats.find((chat) => chat.id === chatId)?.unreadCount) return;
         set((state) => ({ chats: state.chats.map((chat) => chat.id === chatId ? { ...chat, unreadCount: 0 } : chat) }));
-        void markChatReadRemote(chatId).catch(() => undefined);
+        void markChatReadRemote(chatId).catch((error) => set({ backendError: error instanceof Error ? `Чат не отмечен прочитанным: ${error.message}` : "Чат не отмечен прочитанным" }));
       },
 
       deleteMessage: (chatId, messageId) =>

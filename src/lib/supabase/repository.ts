@@ -260,6 +260,75 @@ export async function createWorkOrder(draft: WorkOrderDraft) {
   }
 }
 
+export type BuildingSummary = { id: string; number: string; entrances: number; apartments: number };
+export type ParkingSpotRow = { id: string; label: string; zone: string; kind: "resident" | "guest" | "accessible" };
+
+export async function loadComplexBuildings(): Promise<BuildingSummary[]> {
+  configured();
+  const { supabase, complexId } = await managementContext();
+  const { data, error } = await supabase.from("buildings")
+    .select("id, number, entrances(id, apartments(id))").eq("complex_id", complexId).order("number");
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    number: row.number,
+    entrances: (row.entrances || []).length,
+    apartments: (row.entrances || []).reduce((sum: number, entrance: any) => sum + (entrance.apartments || []).length, 0),
+  }));
+}
+
+export async function createBuilding(number: string, entrances: number, apartmentsPerEntrance: number, firstApartment: number) {
+  configured();
+  const { error } = await (createClient() as any).rpc("create_building_with_apartments", {
+    p_number: number, p_entrances: entrances, p_apartments_per_entrance: apartmentsPerEntrance, p_first_apartment: firstApartment,
+  });
+  if (error) throw error;
+}
+
+export async function loadParkingSpots(): Promise<ParkingSpotRow[]> {
+  configured();
+  const { supabase, complexId } = await managementContext();
+  const { data, error } = await supabase.from("parking_spots").select("id, label, zone, kind").eq("complex_id", complexId).order("label");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addParkingSpots(prefix: string, from: number, to: number, zone: string, kind: ParkingSpotRow["kind"]) {
+  configured();
+  const { supabase, complexId } = await managementContext();
+  const rows = Array.from({ length: to - from + 1 }, (_, index) => ({ complex_id: complexId, label: `${prefix}${from + index}`, zone, kind }));
+  const { error } = await supabase.from("parking_spots").insert(rows);
+  if (error) throw error;
+}
+
+export async function deleteParkingSpot(id: string) {
+  configured();
+  const { error } = await (createClient() as any).from("parking_spots").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export type GroupMember = { id: string; name: string; isAdmin: boolean };
+
+/** Участники беседы и роль текущего пользователя в ней. */
+export async function loadGroupMembers(chatId: string): Promise<{ members: GroupMember[]; isAdmin: boolean }> {
+  configured();
+  const supabase = createClient() as any;
+  const userId = await currentUserId();
+  const { data, error } = await supabase.from("chat_members")
+    .select("user_id, role, user:profiles(full_name)").eq("chat_id", chatId).order("joined_at");
+  if (error) throw error;
+  const members: GroupMember[] = (data || []).map((row: any) => ({ id: row.user_id, name: relation<any>(row.user)?.full_name || "Без имени", isAdmin: row.role === "admin" }));
+  return { members, isAdmin: members.some((member) => member.id === userId && member.isAdmin) };
+}
+
+export async function manageGroupChat(chatId: string, action: "rename" | "add" | "remove" | "leave" | "delete", options: { name?: string; memberIds?: string[] } = {}) {
+  configured();
+  const { error } = await (createClient() as any).rpc("manage_group_chat", {
+    p_chat_id: chatId, p_action: action, p_name: options.name ?? null, p_member_ids: (options.memberIds ?? []).filter(isUuid),
+  });
+  if (error) throw error;
+}
+
 export async function createGroupChat(name: string, memberIds: string[]) {
   configured();
   const { data, error } = await (createClient() as any).rpc("create_group_chat", {

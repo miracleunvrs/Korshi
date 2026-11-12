@@ -5,6 +5,7 @@ import Link from "next/link";
 import NextImage from "next/image";
 import { ArrowLeft, Send, ShieldCheck, CheckCheck, FileText } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
+import GroupChatSettings from "@/components/chats/GroupChatSettings";
 import { CHAT_PAGE_SIZE, loadChatMessages, mergeChatMessages, type MessageCursor } from "@/features/chats/history";
 import type { MessageItem } from "@/types/app";
 
@@ -105,7 +106,7 @@ function ChatRoom({ chatId }: { chatId: string }) {
             </p>
           </div>
         </div>
-        <span className="w-7" />
+        {"type" in currentChat && currentChat.type === "thematic" ? <GroupChatSettings chatId={chatId} name={currentChat.name} /> : <span className="w-7" />}
       </div>
 
       {/* Message stream */}

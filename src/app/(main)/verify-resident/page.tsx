@@ -11,6 +11,7 @@ import { DOCUMENT_UPLOAD_TYPES, validateUploadFile } from "@/lib/uploadLimits";
 import { complexName } from "@/lib/appConfig";
 import { uploadWithRetry } from "@/lib/supabase/uploadWithRetry";
 import { redeemApartmentInvite } from "@/lib/supabase/repository";
+import { reportBackendError } from "@/lib/reportError";
 
 const inviteErrors: Record<string, string> = {
   invalid: "Код не найден. Проверьте, что он введён без ошибок.",
@@ -36,7 +37,7 @@ export default function VerifyResidentPage() {
       const result = await redeemApartmentInvite(inviteCode.trim());
       if (result !== "ok") { setInviteError(inviteErrors[result] || "Не удалось проверить код"); return; }
       await syncAuthState();
-      await hydrateDomainData().catch(() => undefined);
+      await hydrateDomainData().catch(reportBackendError("Не удалось обновить данные"));
       router.push("/feed");
     } catch (cause) {
       setInviteError(cause instanceof Error ? cause.message : "Не удалось проверить код");

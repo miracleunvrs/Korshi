@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useAppStore } from "@/stores/appStore";
 import { takePendingAvatar, uploadAvatar } from "@/lib/avatar";
+import { reportBackendError } from "@/lib/reportError";
 
 export default function AuthStateSync() {
   const syncAuthState = useAppStore((state) => state.syncAuthState);
@@ -32,7 +33,7 @@ export default function AuthStateSync() {
     const refresh = () => {
       window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
-        void hydrateDomainData().catch(() => undefined);
+        void hydrateDomainData().catch(reportBackendError("Не удалось обновить данные"));
       }, 150);
     };
     // Сообщения и уведомления приходят чаще всего: обновляем только их.
@@ -44,14 +45,14 @@ export default function AuthStateSync() {
         const chats = [...pendingChats];
         pendingChats.clear();
         const { refreshChats } = useAppStore.getState();
-        if (chats.length === 0) void refreshChats().catch(() => undefined);
-        for (const id of chats) void refreshChats(id).catch(() => undefined);
+        if (chats.length === 0) void refreshChats().catch(reportBackendError("Не удалось обновить чаты"));
+        for (const id of chats) void refreshChats(id).catch(reportBackendError("Не удалось обновить чат"));
       }, 150);
     };
     const refreshNotificationList = () => {
       window.clearTimeout(notificationTimer);
       notificationTimer = window.setTimeout(() => {
-        void useAppStore.getState().refreshNotifications().catch(() => undefined);
+        void useAppStore.getState().refreshNotifications().catch(reportBackendError("Не удалось обновить уведомления"));
       }, 150);
     };
 
@@ -70,7 +71,7 @@ export default function AuthStateSync() {
       authChangeTimer = window.setTimeout(() => {
         void syncAuthState().then(() => {
           if (useAppStore.getState().isLoggedIn) return hydrateDomainData();
-        }).catch(() => undefined);
+        }).catch(reportBackendError("Не удалось обновить сессию"));
       }, 0);
     });
 

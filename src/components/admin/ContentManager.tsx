@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { CalendarDays, DoorOpen, PiggyBank, Vote } from "lucide-react";
 import { useAppStore } from "@/stores/appStore";
 import { createAmenityResource, createOfficialVote, createScheduleItem, saveBudgetItem } from "@/lib/supabase/repository";
+import { reportBackendError } from "@/lib/reportError";
 
 type Section = "vote" | "schedule" | "resource" | "budget";
 type Status = { tone: "ok" | "error"; text: string } | null;
@@ -30,7 +31,7 @@ export default function ContentManager() {
       await action(new FormData(formElement));
       formElement.reset();
       setStatus({ tone: "ok", text: done });
-      await hydrateDomainData().catch(() => undefined);
+      await hydrateDomainData().catch(reportBackendError("Не удалось обновить данные"));
     } catch (cause) {
       setStatus({ tone: "error", text: cause instanceof Error ? cause.message : "Не удалось сохранить" });
     } finally {
