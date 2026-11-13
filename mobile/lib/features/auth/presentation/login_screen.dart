@@ -10,7 +10,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tab;
   final _loginEmail = TextEditingController();
   final _loginPassword = TextEditingController();
@@ -20,15 +21,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _regPassword = TextEditingController();
   final _regApartment = TextEditingController();
   final _repository = HouseRepository();
-  String _regBuilding = '1';
-  int _regEntrance = 1;
+  String _regBuilding = '';
+  Map<String, Map<String, int>> _buildings = {};
   String _regRole = 'resident';
 
   @override
   void initState() {
     super.initState();
     _tab = TabController(length: 2, vsync: this, initialIndex: 0);
+    _regApartment.addListener(() => setState(() {}));
+    if (_repository.isConfigured) {
+      _repository.loadSignupBuildings().then((buildings) {
+        if (!mounted) return;
+        setState(() {
+          _buildings = buildings;
+          if (buildings.isNotEmpty) _regBuilding = buildings.keys.first;
+        });
+      }).catchError((Object error) {
+        if (mounted) _say('Не удалось загрузить список домов: $error');
+      });
+    }
   }
+
+  void _say(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  int? get _regEntrance => _buildings[_regBuilding]?[_regApartment.text.trim()];
 
   @override
   void dispose() {
@@ -45,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Future<void> _login() async {
     if (!_repository.isConfigured) {
-      if (mounted) context.go('/feed');
+      _say('Сервер не настроен: укажите адрес Supabase при сборке');
       return;
     }
     try {
@@ -53,14 +71,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       if (mounted) context.go('/feed');
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Не удалось войти: $error')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Не удалось войти: $error')));
       }
     }
   }
 
   Future<void> _register() async {
     if (!_repository.isConfigured) {
-      if (mounted) context.go('/feed');
+      _say('Сервер не настроен: укажите адрес Supabase при сборке');
+      return;
+    }
+    final entrance = _regEntrance;
+    if (entrance == null) {
+      _say('В доме $_regBuilding нет квартиры ${_regApartment.text.trim()}');
       return;
     }
     try {
@@ -70,13 +94,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         fullName: _regName.text,
         phone: _regPhone.text,
         buildingNumber: _regBuilding,
-        entranceNumber: _regEntrance,
+        entranceNumber: entrance,
         apartmentNumber: _regApartment.text,
       );
       if (!mounted) return;
       if (response.session == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Проверьте email и подтвердите регистрацию')),
+          const SnackBar(
+              content: Text('Проверьте email и подтвердите регистрацию')),
         );
       } else {
         context.go('/feed');
@@ -104,7 +129,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(36),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x33000000), blurRadius: 24, offset: Offset(0, 8)),
+                  BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 24,
+                      offset: Offset(0, 8)),
                 ],
               ),
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
@@ -156,7 +184,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             ),
                           ),
                           SizedBox(width: 6),
-                          Icon(Icons.verified, size: 20, color: AppColors.primary),
+                          Icon(Icons.verified,
+                              size: 20, color: AppColors.primary),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -184,12 +213,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: const [
-                          BoxShadow(color: Color(0x0A000000), blurRadius: 6, offset: Offset(0, 2)),
+                          BoxShadow(
+                              color: Color(0x0A000000),
+                              blurRadius: 6,
+                              offset: Offset(0, 2)),
                         ],
                       ),
                       labelColor: const Color(0xFF0F172A),
                       unselectedLabelColor: const Color(0xFF64748B),
-                      labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                      labelStyle: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w700),
                       unselectedLabelStyle: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -215,14 +248,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           passwordCtrl: _regPassword,
                           apartmentCtrl: _regApartment,
                           building: _regBuilding,
+                          buildings: _buildings.keys.toList(),
                           entrance: _regEntrance,
                           role: _regRole,
-                          onBuildingChanged: (v) => setState(() => _regBuilding = v),
-                          onEntranceChanged: (v) => setState(() => _regEntrance = v),
+                          onBuildingChanged: (v) =>
+                              setState(() => _regBuilding = v),
                           onRoleChanged: (v) => setState(() => _regRole = v),
                           onSubmit: _register,
                         ),
-                        _LoginTab(emailCtrl: _loginEmail, passwordCtrl: _loginPassword, onSubmit: _login),
+                        _LoginTab(
+                            emailCtrl: _loginEmail,
+                            passwordCtrl: _loginPassword,
+                            onSubmit: _login),
                       ],
                     ),
                   ),
@@ -237,12 +274,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 }
 
 class _RegisterTab extends StatelessWidget {
-  final TextEditingController nameCtrl, phoneCtrl, emailCtrl, passwordCtrl, apartmentCtrl;
+  final TextEditingController nameCtrl,
+      phoneCtrl,
+      emailCtrl,
+      passwordCtrl,
+      apartmentCtrl;
   final String building;
-  final int entrance;
+  final List<String> buildings;
+  final int? entrance;
   final String role;
   final ValueChanged<String> onBuildingChanged;
-  final ValueChanged<int> onEntranceChanged;
   final ValueChanged<String> onRoleChanged;
   final Future<void> Function() onSubmit;
   const _RegisterTab({
@@ -252,10 +293,10 @@ class _RegisterTab extends StatelessWidget {
     required this.passwordCtrl,
     required this.apartmentCtrl,
     required this.building,
+    required this.buildings,
     required this.entrance,
     required this.role,
     required this.onBuildingChanged,
-    required this.onEntranceChanged,
     required this.onRoleChanged,
     required this.onSubmit,
   });
@@ -264,7 +305,10 @@ class _RegisterTab extends StatelessWidget {
     return SingleChildScrollView(
       child: Column(
         children: [
-          _Field(label: 'ФИО (как в удостоверении)', hint: 'Иван Иванов', controller: nameCtrl),
+          _Field(
+              label: 'ФИО (как в удостоверении)',
+              hint: 'Иван Иванов',
+              controller: nameCtrl),
           const SizedBox(height: 12),
           _Field(
             label: 'Номер мобильного телефона',
@@ -293,21 +337,21 @@ class _RegisterTab extends StatelessWidget {
                 child: _Dropdown(
                   label: 'Дом №',
                   value: building,
-                  items: const ['1', '2', '3'],
+                  items: buildings,
                   onChanged: onBuildingChanged,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _NumberField(
+                child: _ReadOnlyField(
                   label: 'Подъезд',
-                  value: entrance,
-                  onChanged: onEntranceChanged,
+                  value: entrance == null ? '—' : '$entrance',
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _Field(label: 'Кв. №', hint: '45', controller: apartmentCtrl),
+                child: _Field(
+                    label: 'Кв. №', hint: '45', controller: apartmentCtrl),
               ),
             ],
           ),
@@ -337,13 +381,16 @@ class _RegisterTab extends StatelessWidget {
                               : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: role == 'resident' ? AppColors.primary : const Color(0xFFE2E8F0),
+                            color: role == 'resident'
+                                ? AppColors.primary
+                                : const Color(0xFFE2E8F0),
                           ),
                         ),
                         child: const Text(
                           'Житель / Собственник',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -368,7 +415,8 @@ class _RegisterTab extends StatelessWidget {
                         child: const Text(
                           'Мастер услуг ЖК',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ),
@@ -385,11 +433,15 @@ class _RegisterTab extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               child: const Text(
                 'Зарегистрироваться и войти в ЖК',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white),
               ),
             ),
           ),
@@ -402,7 +454,10 @@ class _RegisterTab extends StatelessWidget {
 class _LoginTab extends StatelessWidget {
   final TextEditingController emailCtrl, passwordCtrl;
   final Future<void> Function() onSubmit;
-  const _LoginTab({required this.emailCtrl, required this.passwordCtrl, required this.onSubmit});
+  const _LoginTab(
+      {required this.emailCtrl,
+      required this.passwordCtrl,
+      required this.onSubmit});
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -433,12 +488,17 @@ class _LoginTab extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
-            icon: const Icon(Icons.arrow_forward, size: 16, color: Colors.white),
+            icon:
+                const Icon(Icons.arrow_forward, size: 16, color: Colors.white),
             label: const Text(
               'Войти в систему',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white),
             ),
           ),
         ),
@@ -486,7 +546,8 @@ class _Field extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             isDense: true,
             hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
           ),
@@ -529,14 +590,17 @@ class _Dropdown extends StatelessWidget {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: value,
+              value: items.contains(value) ? value : null,
+              hint: const Text('Загрузка…'),
               isExpanded: true,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF0F172A),
               ),
-              items: items.map((e) => DropdownMenuItem(value: e, child: Text('Дом $e'))).toList(),
+              items: items
+                  .map((e) => DropdownMenuItem(value: e, child: Text('Дом $e')))
+                  .toList(),
               onChanged: (v) => onChanged(v!),
             ),
           ),
@@ -546,11 +610,9 @@ class _Dropdown extends StatelessWidget {
   }
 }
 
-class _NumberField extends StatelessWidget {
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-  const _NumberField({required this.label, required this.value, required this.onChanged});
+class _ReadOnlyField extends StatelessWidget {
+  final String label, value;
+  const _ReadOnlyField({required this.label, required this.value});
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -565,21 +627,14 @@ class _NumberField extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        TextField(
-          controller: TextEditingController(text: '$value'),
-          keyboardType: TextInputType.number,
-          onChanged: (v) => onChanged(int.tryParse(v) ?? 1),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: const Color(0xFFF1F5F9),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            isDense: true,
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE2E8F0),
+            borderRadius: BorderRadius.circular(12),
           ),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          child: Text(value, style: const TextStyle(fontSize: 14)),
         ),
       ],
     );

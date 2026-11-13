@@ -53,8 +53,8 @@ export default function FeedPage() {
     const newPost: PostWithAuthor = {
       id: `post-${Date.now()}`,
       author_id: currentUser.id,
-      complex_id: currentUser.complexId || "complex-1",
-      building_id: currentUser.buildingId || `building-${currentUser.buildingNumber}`,
+      complex_id: currentUser.complexId ?? "",
+      building_id: currentUser.buildingId ?? null,
       entrance_id: null,
       type: quickPostType,
       title: null,

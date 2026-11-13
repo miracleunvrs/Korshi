@@ -98,6 +98,12 @@ export default function CreatePostPage() {
     const newPostId = `post-${Date.now()}`;
     const validOptions = pollOptions.filter((o) => o.trim().length > 0);
 
+    if ((type === "announcement" || type === "service") && !title.trim()) {
+      setFormError("Укажите заголовок объявления.");
+      setLoading(false);
+      return;
+    }
+
     if (type === 'poll' && validOptions.length < 2) {
       setFormError('Добавьте минимум 2 варианта ответа для опроса.');
       setLoading(false);
@@ -107,9 +113,9 @@ export default function CreatePostPage() {
     const newPost: PostWithAuthor = {
       id: newPostId,
       author_id: currentUser.id,
-      complex_id: currentUser.complexId || "complex-1",
-      building_id: territory === "building" || territory === "entrance" ? (currentUser.buildingId || `building-${currentUser.buildingNumber}`) : null,
-      entrance_id: territory === "entrance" ? (currentUser.entranceId || `entrance-${currentUser.entranceNumber}`) : null,
+      complex_id: currentUser.complexId ?? "",
+      building_id: territory === "building" || territory === "entrance" ? (currentUser.buildingId ?? null) : null,
+      entrance_id: territory === "entrance" ? (currentUser.entranceId ?? null) : null,
       type,
       title: title.trim() ? title.trim() : null,
       content: content.trim(),
@@ -164,7 +170,7 @@ export default function CreatePostPage() {
               id: `init-${Date.now()}`,
               post_id: newPostId,
               stage: "proposal",
-              goal: title || "Предложение жителей",
+              goal: title.trim() || content.trim(),
               supporters: 1,
               updated_at: new Date().toISOString(),
             }
@@ -175,7 +181,7 @@ export default function CreatePostPage() {
     if (type === "announcement" || type === "service") {
       addClassified({
         id: `item-${Date.now()}`,
-        title: title.trim() || "Объявление жителя",
+        title: title.trim(),
         category: type === "service" ? "Услуги" : "Объявления",
         price: price ? `${Number(price).toLocaleString("ru-RU")} ₸` : "Договорная",
         location: `Дом ${currentUser.buildingNumber}, кв. ${currentUser.apartmentNumber}`,

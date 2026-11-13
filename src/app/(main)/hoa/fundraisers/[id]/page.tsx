@@ -118,7 +118,7 @@ export default function FundraiserDetailPage({ params }: { params: Promise<{ id:
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <h1 className="font-bold text-gray-900 text-xs truncate max-w-[200px]">
-            {fundraiserPost?.title || "Сбор на благоустройство двора"}
+            {fundraiserPost?.title ?? "Сбор"}
         </h1>
         <button className="text-gray-400 p-1 hover:text-gray-600">
           <Share2 className="w-4 h-4" />

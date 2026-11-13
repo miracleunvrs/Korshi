@@ -55,7 +55,7 @@ export default function ContentManager() {
           title: text(form, "title"),
           description: text(form, "description"),
           basis: text(form, "basis") === "area" ? "area" : "owner",
-          quorumPercent: Number(form.get("quorum")) || 51,
+          quorumPercent: Number(form.get("quorum")),
           startsAt: text(form, "startsAt"),
           endsAt: text(form, "endsAt"),
         }), "Голосование открыто, жители получили уведомление")} className="space-y-3 rounded-3xl border border-gray-200 bg-white p-5">
@@ -63,7 +63,7 @@ export default function ContentManager() {
           <Field label="Описание и материалы"><textarea name="description" required minLength={10} rows={4} className="field" /></Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Как считаются голоса"><select name="basis" className="field"><option value="owner">Одна квартира — один голос</option><option value="area">По площади квартир</option></select></Field>
-            <Field label="Кворум, %"><input name="quorum" type="number" min={1} max={100} defaultValue={51} className="field" /></Field>
+            <Field label="Кворум, %"><input name="quorum" type="number" required min={1} max={100} defaultValue={51} className="field" /></Field>
             <Field label="Начало"><input name="startsAt" type="datetime-local" required className="field" /></Field>
             <Field label="Окончание"><input name="endsAt" type="datetime-local" required className="field" /></Field>
           </div>
@@ -74,7 +74,7 @@ export default function ContentManager() {
 
       {section === "schedule" && (
         <form onSubmit={(event) => void run(event, (form) => createScheduleItem({
-          kind: (text(form, "kind") || "maintenance") as "cleaning" | "maintenance" | "outage" | "event",
+          kind: text(form, "kind") as "cleaning" | "maintenance" | "outage" | "event",
           title: text(form, "title"),
           description: text(form, "description"),
           location: text(form, "location"),

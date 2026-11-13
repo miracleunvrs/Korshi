@@ -500,6 +500,7 @@ export const useAppStore = create<AppState>()(
       },
 
       reopenServiceRequest: async (requestId, message) => {
+        if (!message.trim()) throw new Error("Опишите, что осталось не сделано");
         await persistServiceRequestReopen(requestId, message);
         const state = get();
         const now = new Date().toLocaleString("ru-RU");
@@ -514,7 +515,7 @@ export const useAppStore = create<AppState>()(
               kind: "reopened",
               actorName: state.currentUser.fullName,
               actorRole: state.currentUser.role,
-              message: message.trim() || "Требуется дополнительная работа",
+              message: message.trim(),
               createdAt: now,
             }],
           } : request),

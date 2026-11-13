@@ -156,7 +156,7 @@ function RequestCard({ request, index, isManagement, currentUserId, executors, m
     const executor = executors.find((item) => item.id === assigneeId);
     void run(() => updateStatus(request.id, "in_progress", {
       assigneeId: executor?.id,
-      assigneeName: executor?.name || "Служба эксплуатации",
+      assigneeName: executor?.name,
       slaDueAt: new Date(Date.now() + slaHours * 60 * 60 * 1000).toISOString(),
       note: "Заявка принята в работу",
     }));
@@ -221,7 +221,7 @@ function RequestCard({ request, index, isManagement, currentUserId, executors, m
           <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-violet-800">{isManagement ? "Кабинет диспетчера" : "Кабинет исполнителя"}</p>
           {request.status === "submitted" && isManagement && <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
             <select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} className="min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-stone-800" aria-label="Исполнитель">
-              <option value="">Служба эксплуатации</option>
+              <option value="">Без исполнителя</option>
               {executors.map((executor) => <option key={executor.id} value={executor.id}>{executor.name}</option>)}
             </select>
             <select value={slaHours} onChange={(event) => setSlaHours(Number(event.target.value))} className="min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-stone-800" aria-label="Срок выполнения">
@@ -242,7 +242,7 @@ function RequestCard({ request, index, isManagement, currentUserId, executors, m
           </div>}
         </div>}
 
-        {request.status === "resolved" && isAuthor && <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-extrabold text-amber-950">Как выполнена работа?</p><div className="mt-3 flex flex-wrap items-center gap-2">{[1, 2, 3, 4, 5].map((value) => <button key={value} disabled={busy} onClick={() => void run(() => rateRequest(request.id, value))} className="grid h-11 w-11 place-items-center rounded-xl bg-white text-amber-500 ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:bg-amber-100" aria-label={`Поставить ${value}`}><Star className="h-5 w-5" /></button>)}<button disabled={busy} onClick={() => void run(() => reopenRequest(request.id, "Работа требует исправления"))} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50"><RotateCcw className="h-4 w-4" />Открыть повторно</button></div></div>}
+        {request.status === "resolved" && isAuthor && <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4"><p className="text-sm font-extrabold text-amber-950">Как выполнена работа?</p><div className="mt-3 flex flex-wrap items-center gap-2">{[1, 2, 3, 4, 5].map((value) => <button key={value} disabled={busy} onClick={() => void run(() => rateRequest(request.id, value))} className="grid h-11 w-11 place-items-center rounded-xl bg-white text-amber-500 ring-1 ring-amber-200 transition hover:-translate-y-0.5 hover:bg-amber-100" aria-label={`Поставить ${value}`}><Star className="h-5 w-5" /></button>)}<button disabled={busy} onClick={() => { if (!comment.trim()) { setError("Напишите в комментарии ниже, что осталось не сделано, и нажмите ещё раз"); return; } const reason = comment.trim(); setComment(""); void run(() => reopenRequest(request.id, reason)); }} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50"><RotateCcw className="h-4 w-4" />Открыть повторно</button></div></div>}
         {request.rating && <p className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-extrabold text-amber-900"><Star className="h-4 w-4 fill-amber-400 text-amber-400" />Ваша оценка: {request.rating} из 5</p>}
 
         <form onSubmit={submitComment} className="mt-5 flex gap-2"><label className="sr-only" htmlFor={`comment-${request.id}`}>Комментарий к заявке</label><input id={`comment-${request.id}`} value={comment} onChange={(event) => setComment(event.target.value)} maxLength={2000} placeholder="Написать комментарий…" className="min-h-11 min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-4 text-sm outline-none focus:border-green-700 focus:ring-2 focus:ring-green-700/15" /><button disabled={busy || !comment.trim()} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-green-800 text-white hover:bg-green-900 disabled:opacity-40" aria-label="Отправить комментарий">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button></form>

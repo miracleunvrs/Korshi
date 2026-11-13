@@ -51,6 +51,25 @@ class HouseRepository {
     );
   }
 
+  /// Дома и их квартиры с подъездом — для регистрации, до входа.
+  /// Подъезд определяется по номеру квартиры, а не вводится руками.
+  Future<Map<String, Map<String, int>>> loadSignupBuildings() async {
+    final rows = await _client
+        .from('apartments')
+        .select(
+            'number, entrance:entrances(number, building:buildings(number))')
+        .limit(5000);
+    final buildings = <String, Map<String, int>>{};
+    for (final row in rows) {
+      final entrance = row['entrance'] as Map?;
+      final building = entrance?['building'] as Map?;
+      if (entrance == null || building == null) continue;
+      (buildings['${building['number']}'] ??= {})['${row['number']}'] =
+          entrance['number'] as int;
+    }
+    return buildings;
+  }
+
   Future<void> signOut() async {
     if (isConfigured) await _client.auth.signOut();
   }
