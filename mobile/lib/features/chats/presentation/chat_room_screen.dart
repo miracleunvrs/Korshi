@@ -8,6 +8,7 @@ import '../../../core/data/offline_action_queue.dart';
 import '../../../core/data/media_limits.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/empty_state.dart';
+import 'group_settings_sheet.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   final String chatId;
@@ -30,12 +31,25 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   String? _beforeCreatedAt;
   String? _beforeId;
   String? _historyError;
+  Map<String, dynamic>? _chat;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
-    _syncChannel = repository.watchMessages(widget.chatId, () => _loadMessages());
+    _loadChatInfo();
+    _syncChannel =
+        repository.watchMessages(widget.chatId, () => _loadMessages());
+  }
+
+  Future<void> _loadChatInfo() async {
+    if (!repository.isConfigured) return;
+    try {
+      final chat = await repository.loadChatInfo(widget.chatId);
+      if (mounted) setState(() => _chat = chat);
+    } catch (_) {
+      // Название не критично: переписка уже загружается своим запросом.
+    }
   }
 
   Future<void> _loadMessages({bool older = false}) async {
@@ -96,7 +110,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 ? time
                 : (a['id'] as String).compareTo(b['id'] as String);
           });
-        final local = messages.where((m) => m['id'] == null && (m['pending'] == true || m['delivery'] == OfflineMutationDelivery.queued)).toList();
+        final local = messages
+            .where((m) =>
+                m['id'] == null &&
+                (m['pending'] == true ||
+                    m['delivery'] == OfflineMutationDelivery.queued))
+            .toList();
         messages
           ..clear()
           ..addAll(persisted)
@@ -261,15 +280,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Чат дома ${widget.chatId}',
+              '${_chat?['name'] ?? ''}',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: isDark ? Colors.white : const Color(0xFF0F172A),
               ),
             ),
-            const Text(
-              '48 соседей онлайн',
+            Text(
+              _chat?['type'] == 'direct' ? 'Личный чат' : 'Чат соседей',
               style: TextStyle(
                   fontSize: 11,
                   color: AppColors.primary,
@@ -278,13 +297,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon:
-                const Icon(Icons.more_vert, size: 20, color: Color(0xFF94A3B8)),
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Настройки чата пока недоступны')),
+          if (_chat?['type'] == 'thematic')
+            IconButton(
+              tooltip: 'Настройки беседы',
+              icon: const Icon(Icons.tune, size: 20, color: Color(0xFF94A3B8)),
+              onPressed: () async {
+                await showGroupSettings(context, repository, widget.chatId,
+                    '${_chat?['name'] ?? ''}');
+                _loadChatInfo();
+              },
             ),
-          ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),

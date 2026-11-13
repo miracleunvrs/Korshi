@@ -69,13 +69,14 @@ class HouseRepository {
   }
 
   Future<void> updateProfile(
-      {required String fullName, required String phone}) async {
+      {required String fullName, required String phone, String? bio}) async {
     if (!isConfigured) return;
     final user = _client.auth.currentUser;
     if (user == null) throw Exception('Требуется авторизация');
     await _client.from('profiles').update({
       'full_name': fullName.trim(),
-      'phone': phone.trim(),
+      'phone': phone.trim().isEmpty ? null : phone.trim(),
+      if (bio != null) 'bio': bio.trim().isEmpty ? null : bio.trim(),
     }).eq('id', user.id);
   }
 
@@ -265,14 +266,146 @@ class HouseRepository {
         .select('*')
         .order('last_message_at', ascending: false, nullsFirst: false)
         .limit(100);
-    return Future.wait(rows.map((row) async {
-      final item = Map<String, dynamic>.from(row);
-      if (item['type'] == 'image' || item['type'] == 'document') {
-        item['content'] = await _signedMediaUrl(item['content'] as String?);
+    final chats = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+    // Личный чат называется именем собеседника, как в мессенджерах.
+    final directIds = [
+      for (final chat in chats)
+        if (chat['type'] == 'direct') chat['id'] as String
+    ];
+    if (directIds.isNotEmpty) {
+      final members = await _client
+          .from('chat_members')
+          .select('chat_id, user:profiles(full_name, avatar_url)')
+          .inFilter('chat_id', directIds)
+          .neq('user_id', _client.auth.currentUser!.id);
+      final partners = {
+        for (final row in members) row['chat_id'] as String: row['user'] as Map?
+      };
+      for (final chat in chats) {
+        final partner = partners[chat['id']];
+        if (partner == null) continue;
+        chat['name'] = partner['full_name'] ?? 'Сосед';
+        chat['avatar_url'] = partner['avatar_url'];
       }
-      return item;
-    }));
+    }
+    return chats;
   }
+
+  /// Название и тип одного чата; личный чат называется именем собеседника.
+  Future<Map<String, dynamic>?> loadChatInfo(String chatId) async {
+    final row = await _client
+        .from('chats')
+        .select('id, name, type')
+        .eq('id', chatId)
+        .maybeSingle();
+    if (row == null) return null;
+    final chat = Map<String, dynamic>.from(row);
+    if (chat['type'] == 'direct') {
+      final partner = await _client
+          .from('chat_members')
+          .select('user:profiles(full_name)')
+          .eq('chat_id', chatId)
+          .neq('user_id', _client.auth.currentUser!.id)
+          .maybeSingle();
+      final name = (partner?['user'] as Map?)?['full_name'];
+      if (name != null) chat['name'] = name;
+    }
+    return chat;
+  }
+
+  /// Подтверждённые соседи по ЖК — кому можно написать.
+  Future<List<Map<String, dynamic>>> loadNeighbours() async {
+    final profile = await loadProfile();
+    final complexId = profile?['complex_id'];
+    if (complexId == null) return [];
+    final rows = await _client
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('complex_id', complexId)
+        .eq('verified', true)
+        .neq('id', _client.auth.currentUser!.id)
+        .order('full_name')
+        .limit(500);
+    return rows.map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
+  Future<String> createDirectChat(String userId) async {
+    final id = await _client
+        .rpc('create_direct_chat', params: {'p_target_user': userId});
+    return id as String;
+  }
+
+  Future<String> createGroupChat(String name, List<String> memberIds) async {
+    final id = await _client.rpc('create_group_chat',
+        params: {'p_name': name, 'p_member_ids': memberIds});
+    return id as String;
+  }
+
+  /// Участники беседы; `isAdmin` — может ли текущий пользователь ею управлять.
+  Future<({List<Map<String, dynamic>> members, bool isAdmin})> loadGroupMembers(
+      String chatId) async {
+    final rows = await _client
+        .from('chat_members')
+        .select('user_id, role, user:profiles(full_name)')
+        .eq('chat_id', chatId)
+        .order('joined_at');
+    final members = rows.map((row) => Map<String, dynamic>.from(row)).toList();
+    final me = _client.auth.currentUser!.id;
+    return (
+      members: members,
+      isAdmin: members.any(
+          (member) => member['user_id'] == me && member['role'] == 'admin'),
+    );
+  }
+
+  Future<void> manageGroupChat(String chatId, String action,
+      {String? name, List<String> memberIds = const []}) {
+    return _client.rpc('manage_group_chat', params: {
+      'p_chat_id': chatId,
+      'p_action': action,
+      'p_name': name,
+      'p_member_ids': memberIds,
+    });
+  }
+
+  /// Аватар лежит в публичном хранилище: его видят соседи.
+  Future<String> uploadAvatar(Uint8List png) async {
+    final userId = _client.auth.currentUser!.id;
+    final path = '$userId/${DateTime.now().millisecondsSinceEpoch}.png';
+    await _client.storage.from('avatars').uploadBinary(path, png,
+        fileOptions: const FileOptions(contentType: 'image/png'));
+    final url = _client.storage.from('avatars').getPublicUrl(path);
+    try {
+      await _client
+          .from('profiles')
+          .update({'avatar_url': url}).eq('id', userId);
+    } catch (_) {
+      await _client.storage.from('avatars').remove([path]);
+      rethrow;
+    }
+    return url;
+  }
+
+  Future<Map<String, dynamic>?> loadNotificationPreferences() async {
+    final row = await _client
+        .from('notification_preferences')
+        .select('push, voting, payments, email_critical, sms_critical')
+        .eq('user_id', _client.auth.currentUser!.id)
+        .maybeSingle();
+    return row;
+  }
+
+  Future<void> saveNotificationPreference(String key, bool value) async {
+    final profile = await loadProfile();
+    await _client.from('notification_preferences').upsert({
+      'user_id': _client.auth.currentUser!.id,
+      'complex_id': profile?['complex_id'],
+      key: value,
+    }, onConflict: 'user_id,complex_id');
+  }
+
+  Future<void> changePassword(String password) =>
+      _client.auth.updateUser(UserAttributes(password: password));
 
   static const messagePageSize = 50;
 

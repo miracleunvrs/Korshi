@@ -15,13 +15,16 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/create/presentation/create_post_screen.dart';
 import '../features/requests/presentation/service_requests_screen.dart';
 import '../core/supabase/supabase_config.dart';
+import '../features/chats/presentation/new_chat_screen.dart';
+import '../features/settings/presentation/settings_screen.dart';
 
 class _AuthRefreshNotifier extends ChangeNotifier {
   late final StreamSubscription<AuthState> _subscription;
 
   _AuthRefreshNotifier() {
     if (!SupabaseConfig.isPlaceholder) {
-      _subscription = SupabaseConfig.client.auth.onAuthStateChange.listen((_) => notifyListeners());
+      _subscription = SupabaseConfig.client.auth.onAuthStateChange
+          .listen((_) => notifyListeners());
     }
   }
 
@@ -37,7 +40,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.onDispose(authRefresh.dispose);
   return GoRouter(
     refreshListenable: authRefresh,
-    initialLocation: SupabaseConfig.isPlaceholder || SupabaseConfig.client.auth.currentSession != null
+    initialLocation: SupabaseConfig.isPlaceholder ||
+            SupabaseConfig.client.auth.currentSession != null
         ? '/feed'
         : '/login',
     redirect: (context, state) {
@@ -57,6 +61,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
         path: '/requests',
         builder: (context, state) => const ServiceRequestsScreen(),
       ),
@@ -66,7 +74,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         },
         branches: [
           StatefulShellBranch(
-            routes: [GoRoute(path: '/feed', builder: (context, state) => const FeedScreen())],
+            routes: [
+              GoRoute(
+                  path: '/feed',
+                  builder: (context, state) => const FeedScreen())
+            ],
           ),
           StatefulShellBranch(
             routes: [
@@ -75,9 +87,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const ChatsListScreen(),
                 routes: [
                   GoRoute(
+                    path: 'new',
+                    builder: (context, state) => const NewChatScreen(),
+                  ),
+                  GoRoute(
                     path: ':chatId',
                     builder: (context, state) {
-                      final chatId = state.pathParameters['chatId'] ?? '1';
+                      final chatId = state.pathParameters['chatId']!;
                       return ChatRoomScreen(chatId: chatId);
                     },
                   ),
@@ -87,14 +103,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(path: '/classifieds', builder: (context, state) => const ClassifiedsScreen()),
+              GoRoute(
+                  path: '/classifieds',
+                  builder: (context, state) => const ClassifiedsScreen()),
             ],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: '/hoa', builder: (context, state) => const HoaScreen())],
+            routes: [
+              GoRoute(
+                  path: '/hoa', builder: (context, state) => const HoaScreen())
+            ],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen())],
+            routes: [
+              GoRoute(
+                  path: '/profile',
+                  builder: (context, state) => const ProfileScreen())
+            ],
           ),
         ],
       ),
@@ -107,7 +132,8 @@ class ScaffoldWithBottomNav extends StatelessWidget {
 
   const ScaffoldWithBottomNav({super.key, required this.navigationShell});
 
-  void _openCreate(BuildContext context, BuildContext sheetContext, String type) {
+  void _openCreate(
+      BuildContext context, BuildContext sheetContext, String type) {
     Navigator.pop(sheetContext);
     Future<void>.delayed(Duration.zero, () {
       if (context.mounted) context.push('/create?type=$type');
@@ -121,8 +147,9 @@ class ScaffoldWithBottomNav extends StatelessWidget {
       isScrollControlled: true,
       builder: (ctx) => Container(
         decoration: BoxDecoration(
-          color:
-              Theme.of(ctx).brightness == Brightness.dark ? const Color(0xFF1C1C1E) : Colors.white,
+          color: Theme.of(ctx).brightness == Brightness.dark
+              ? const Color(0xFF1C1C1E)
+              : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -206,7 +233,10 @@ class ScaffoldWithBottomNav extends StatelessWidget {
               color: Theme.of(context).scaffoldBackgroundColor,
               boxShadow: MediaQuery.of(context).size.width > 600
                   ? const [
-                      BoxShadow(color: Color(0x1A000000), blurRadius: 24, offset: Offset(0, 8))
+                      BoxShadow(
+                          color: Color(0x1A000000),
+                          blurRadius: 24,
+                          offset: Offset(0, 8))
                     ]
                   : null,
             ),
@@ -220,7 +250,10 @@ class ScaffoldWithBottomNav extends StatelessWidget {
         decoration: const BoxDecoration(
           color: Color(0xFF16A34A),
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Color(0x4D16A34A), blurRadius: 12, offset: Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+                color: Color(0x4D16A34A), blurRadius: 12, offset: Offset(0, 4))
+          ],
         ),
         child: Material(
           color: Colors.transparent,
@@ -237,10 +270,15 @@ class ScaffoldWithBottomNav extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF121214) : Colors.white,
           border: Border(
-            top: BorderSide(color: isDark ? const Color(0xFF27272A) : const Color(0xFFF1F5F9)),
+            top: BorderSide(
+                color:
+                    isDark ? const Color(0xFF27272A) : const Color(0xFFF1F5F9)),
           ),
           boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, -2)),
+            BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 12,
+                offset: Offset(0, -2)),
           ],
         ),
         child: SafeArea(
@@ -325,8 +363,12 @@ class _CreateOption extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF64748B))),
                 ],
               ),
             ),

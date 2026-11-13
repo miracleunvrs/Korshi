@@ -715,6 +715,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               label: 'Отправить документы',
                               onTap: _openDocumentSheet),
                         _MenuRow(
+                            icon: Icons.settings_outlined,
+                            label: 'Настройки',
+                            onTap: () async {
+                              await context.push('/settings');
+                              _loadRemoteProfile();
+                            }),
+                        _MenuRow(
                             icon: Icons.sell_outlined,
                             label: 'Объявления и услуги',
                             onTap: () => context.go('/classifieds')),

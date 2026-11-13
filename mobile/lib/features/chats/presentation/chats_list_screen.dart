@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/data/house_repository.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_skeleton.dart';
 
@@ -120,26 +121,34 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
                           letterSpacing: -0.3,
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.add, size: 14, color: AppColors.primary),
-                            SizedBox(width: 4),
-                            Text(
-                              'Создать группу',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
+                      InkWell(
+                        onTap: () async {
+                          await context.push('/chats/new');
+                          _load();
+                        },
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.add,
+                                  size: 14, color: AppColors.primary),
+                              SizedBox(width: 4),
+                              Text(
+                                'Новый чат',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -257,22 +266,32 @@ class _ChatsListScreenState extends State<ChatsListScreen> {
                                           horizontal: 16, vertical: 14),
                                       child: Row(
                                         children: [
-                                          Container(
-                                            width: 48,
-                                            height: 48,
-                                            decoration: BoxDecoration(
-                                              color: c['color'] as Color,
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                c['icon'] as String,
-                                                style: const TextStyle(
-                                                    fontSize: 20),
+                                          if (c['type'] == 'direct')
+                                            AppAvatar(
+                                              imageUrl:
+                                                  c['avatar_url'] as String?,
+                                              fallback: '${c['name']}'
+                                                  .characters
+                                                  .first,
+                                              size: 48,
+                                            )
+                                          else
+                                            Container(
+                                              width: 48,
+                                              height: 48,
+                                              decoration: BoxDecoration(
+                                                color: c['color'] as Color,
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  c['icon'] as String,
+                                                  style: const TextStyle(
+                                                      fontSize: 20),
+                                                ),
                                               ),
                                             ),
-                                          ),
                                           const SizedBox(width: 14),
                                           Expanded(
                                             child: Column(
